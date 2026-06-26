@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>乌镇文旅资源 WebGIS 智能导览系统</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700;900&family=Noto+Sans+SC:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<!-- html2canvas for route-sharing card export (须在ArcGIS API之前加载，避免AMD加载器冲突) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+<!-- ArcGIS API for JavaScript -->
+<link rel="stylesheet" href="https://js.arcgis.com/4.29/esri/themes/dark/main.css">
+<script src="https://js.arcgis.com/4.29/"></script>
+
+<style>
+:root{
+  --paper:#F3EFE6;
+  --paper-deep:#EAE3D3;
+  --ink:#2B2926;
+  --ink-soft:#5A554C;
+  --indigo:#2D4F5C;
+  --indigo-deep:#1F3942;
+  --indigo-pale:#D7E2E2;
+  --terracotta:#B8693D;
+  --terracotta-pale:#F0DDC9;
+  --jade:#5C7A5C;
+  --jade-pale:#DCE5D6;
+  --gold:#C9A66B;
+  --line:rgba(43,41,38,0.12);
+  --white:#FFFEFB;
+  --shadow:0 8px 24px rgba(43,41,38,0.10);
+  --cat-attraction:#2D4F5C;
+  --cat-heritage:#B8693D;
+  --cat-food:#C9914A;
+  --cat-stay:#5C7A5C;
+  --cat-service:#8A8478;
+}
+
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;}
+body{
+  font-family:'Noto Sans SC',sans-serif;
+  background:var(--paper);
+  color:var(--ink);
+  overflow:hidden;
+}
+
+.app{
+  display:grid;
+  grid-template-columns:400px 1fr;
+  height:100vh;
+  width:100vw;
+}
+@media (max-width:900px){
+  .app{grid-template-columns:1fr;grid-template-rows:auto 1fr;height:auto;min-height:100vh;}
+}
+
+/* ============ LEFT PANEL ============ */
+.panel{
+  background:var(--indigo-deep);
+  color:var(--paper);
+  display:flex;
+  flex-direction:column;
+  overflow-y:auto;
+  border-right:1px solid rgba(0,0,0,0.2);
+}
+.panel::-webkit-scrollbar{width:6px;}
+.panel::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:3px;}
+
+.panel-header{padding:24px 24px 16px;border-bottom:1px solid rgba(255,255,255,0.08);}
+.brand-mark{
+  width:32px;height:32px;border:1.5px solid var(--gold);border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Noto Serif SC',serif;font-size:14px;color:var(--gold);margin-bottom:12px;
+}
+.panel-title{font-family:'Noto Serif SC',serif;font-weight:700;font-size:21px;line-height:1.4;color:var(--white);}
+.panel-sub{font-size:11px;color:rgba(243,239,230,0.55);margin-top:5px;letter-spacing:1.5px;font-family:'JetBrains Mono',monospace;}
+
+.weather-strip{
+  display:flex;align-items:center;gap:10px;
+  padding:11px 24px;
+  background:rgba(255,255,255,0.04);
+  border-bottom:1px solid rgba(255,255,255,0.08);
+  font-size:12px;
+  color:rgba(243,239,230,0.7);
+}
+.weather-strip .w-icon{font-size:16px;}
+.weather-strip .w-tip{margin-left:auto;color:var(--gold);font-size:11px;}
+
+.stats-row{display:grid;grid-template-columns:repeat(3,1fr);padding:16px 24px;border-bottom:1px solid rgba(255,255,255,0.08);gap:6px;}
+.stat{text-align:left;}
+.stat-num{font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:500;color:var(--gold);line-height:1;}
+.stat-label{font-size:10px;color:rgba(243,239,230,0.5);margin-top:4px;}
+
+.section{padding:20px 24px;border-bottom:1px solid rgba(255,255,255,0.08);}
+.section-label{font-size:11px;letter-spacing:2px;color:var(--gold);font-family:'JetBrains Mono',monospace;margin-bottom:13px;display:flex;align-items:center;gap:8px;}
+.section-label::before{content:'';width:12px;height:1px;background:var(--gold);}
+
+.search-box{position:relative;}
+.search-box input{width:100%;padding:10px 14px 10px 36px;background:rgba(255,255,255,0.06);border:1px solid rgba(243,239,230,0.15);border-radius:8px;color:var(--white);font-size:13px;font-family:'Noto Sans SC',sans-serif;}
+.search-box input::placeholder{color:rgba(243,239,230,0.35);}
+.search-box input:focus{outline:none;border-color:var(--gold);}
+.search-box svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:rgba(243,239,230,0.4);}
+.search-results{margin-top:8px;max-height:160px;overflow-y:auto;}
+.search-result-item{padding:8px 10px;font-size:12px;border-radius:6px;cursor:pointer;color:rgba(243,239,230,0.8);display:flex;justify-content:space-between;}
+.search-result-item:hover{background:rgba(255,255,255,0.06);}
+
+.pref-grid{display:flex;flex-wrap:wrap;gap:7px;}
+.pref-pill{
+  padding:7px 13px;border:1.5px solid rgba(243,239,230,0.22);border-radius:18px;
+  font-size:12px;color:rgba(243,239,230,0.75);cursor:pointer;transition:all 0.2s ease;
+  display:flex;align-items:center;gap:5px;background:transparent;
+}
+.pref-pill .dot{width:6px;height:6px;border-radius:50%;}
+.pref-pill:hover{border-color:rgba(243,239,230,0.45);}
+.pref-pill.selected{background:var(--pill-bg);border-color:var(--pill-border);color:var(--white);}
+
+.subpref-wrap{margin-top:10px;display:none;}
+.subpref-wrap.show{display:block;}
+.subpref-title{font-size:10.5px;color:rgba(243,239,230,0.4);margin-bottom:6px;letter-spacing:0.5px;}
+.subpref-grid{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;}
+.subpref-chip{
+  padding:4px 10px;border:1px solid rgba(243,239,230,0.15);border-radius:14px;
+  font-size:10.5px;color:rgba(243,239,230,0.55);cursor:pointer;transition:all 0.15s ease;
+}
+.subpref-chip:hover{border-color:rgba(243,239,230,0.4);}
+.subpref-chip.selected{background:rgba(201,166,107,0.25);border-color:var(--gold);color:var(--white);}
+
+.daydur-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:4px;}
+.daydur-btn{
+  padding:11px 8px;border:1.5px solid rgba(243,239,230,0.2);border-radius:9px;
+  text-align:center;cursor:pointer;transition:all 0.2s ease;background:transparent;
+}
+.daydur-btn .dd-title{font-size:12.5px;color:rgba(243,239,230,0.85);font-weight:500;}
+.daydur-btn .dd-sub{font-size:10px;color:rgba(243,239,230,0.45);margin-top:2px;font-family:'JetBrains Mono',monospace;}
+.daydur-btn:hover{border-color:rgba(243,239,230,0.5);}
+.daydur-btn.selected{background:rgba(184,105,61,0.22);border-color:var(--terracotta);}
+.daydur-btn.selected .dd-title{color:var(--white);}
+
+.predict-line{margin-top:13px;font-size:11.5px;color:rgba(243,239,230,0.55);line-height:1.6;font-family:'JetBrains Mono',monospace;min-height:32px;}
+.predict-line .num{color:#E8C4A8;font-size:12.5px;}
+.predict-line .budget{color:#9FD1A8;}
+
+.btn-generate{
+  width:100%;margin-top:16px;padding:13px 0;background:var(--terracotta);color:var(--white);
+  border:none;border-radius:9px;font-size:14px;font-weight:600;letter-spacing:1px;cursor:pointer;
+  font-family:'Noto Sans SC',sans-serif;transition:all 0.2s ease;
+}
+.btn-generate:hover{background:#A6562E;transform:translateY(-1px);box-shadow:0 6px 16px rgba(184,105,61,0.35);}
+.btn-generate:disabled{background:rgba(243,239,230,0.15);color:rgba(243,239,230,0.4);cursor:not-allowed;transform:none;box-shadow:none;}
+.btn-generate .spinner{display:none;width:14px;height:14px;border:2px solid rgba(255,255,255,0.3);border-top-color:white;border-radius:50%;animation:spin 0.7s linear infinite;margin-right:7px;}
+.btn-generate.loading .spinner{display:inline-block;}
+.btn-generate.loading .btn-text::after{content:'规划路线中…';}
+.btn-generate .btn-text::after{content:'生成专属路线';}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+.btn-row{display:flex;gap:8px;margin-top:8px;}
+.btn-secondary{
+  flex:1;padding:9px 0;background:transparent;border:1.5px solid rgba(243,239,230,0.25);
+  color:rgba(243,239,230,0.75);border-radius:9px;font-size:12px;cursor:pointer;
+  display:none;align-items:center;justify-content:center;gap:5px;transition:all 0.2s ease;
+}
+.btn-secondary.show{display:flex;}
+.btn-secondary:hover{border-color:rgba(243,239,230,0.5);background:rgba(255,255,255,0.04);}
+.btn-secondary svg{width:12px;height:12px;}
+
+.accessible-toggle{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.06);
+}
+.accessible-toggle .at-label{font-size:11.5px;color:rgba(243,239,230,0.6);}
+.switch{position:relative;width:34px;height:18px;}
+.switch input{opacity:0;width:0;height:0;}
+.switch .slider{position:absolute;inset:0;background:rgba(255,255,255,0.15);border-radius:18px;cursor:pointer;transition:0.2s;}
+.switch .slider:before{position:absolute;content:'';height:13px;width:13px;left:2.5px;bottom:2.5px;background:white;border-radius:50%;transition:0.2s;}
+.switch input:checked+.slider{background:var(--terracotta);}
+.switch input:checked+.slider:before{transform:translateX(15px);}
+
+.footer-note{padding:16px 24px 22px;font-size:10.5px;color:rgba(243,239,230,0.32);line-height:1.7;margin-top:auto;}
+
+/* ============ MAP AREA ============ */
+.map-area{position:relative;background:var(--paper);overflow:hidden;}
+#viewDiv{position:absolute;inset:0;}
+
+.map-topbar{position:absolute;top:18px;left:20px;right:20px;display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none;z-index:20;}
+.topbar-title{font-family:'Noto Serif SC',serif;font-size:13px;color:var(--ink-soft);background:rgba(255,254,251,0.9);backdrop-filter:blur(6px);padding:8px 16px;border-radius:20px;border:1px solid var(--line);letter-spacing:1px;box-shadow:var(--shadow);}
+.legend-card{background:var(--white);border:1px solid var(--line);border-radius:12px;padding:13px 15px;box-shadow:var(--shadow);pointer-events:auto;font-size:11px;min-width:140px;}
+.legend-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+.legend-row:last-child{margin-bottom:0;}
+.legend-row .sw{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+.legend-row span{color:var(--ink-soft);}
+
+.empty-hint{
+  position:absolute;bottom:28px;left:50%;transform:translateX(-50%);
+  background:rgba(43,41,38,0.9);color:var(--paper);padding:10px 20px;border-radius:22px;
+  font-size:12px;display:flex;align-items:center;gap:9px;z-index:30;box-shadow:var(--shadow);
+  transition:opacity 0.3s ease;
+}
+.empty-hint .pulse{width:6px;height:6px;border-radius:50%;background:var(--gold);animation:pulse 1.6s infinite ease-in-out;}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:1;}50%{transform:scale(1.6);opacity:0.5;}}
+
+.toast{
+  position:absolute;top:18px;left:50%;transform:translateX(-50%) translateY(-20px);
+  background:var(--ink);color:var(--paper);padding:9px 18px;border-radius:20px;font-size:12px;
+  opacity:0;z-index:60;transition:opacity 0.3s ease, transform 0.3s ease;pointer-events:none;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+/* itinerary drawer with day tabs */
+.itinerary-drawer{
+  position:absolute;bottom:0;left:0;right:0;background:var(--white);border-top:1px solid var(--line);
+  border-radius:18px 18px 0 0;box-shadow:0 -10px 30px rgba(43,41,38,0.12);
+  transform:translateY(100%);transition:transform 0.45s cubic-bezier(.22,1,.36,1);z-index:40;
+  max-height:280px;display:flex;flex-direction:column;
+}
+.itinerary-drawer.show{transform:translateY(0);}
+.drawer-handle{display:flex;align-items:center;justify-content:space-between;padding:13px 20px 8px;flex-shrink:0;}
+.drawer-title-group{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;}
+.drawer-title{font-family:'Noto Serif SC',serif;font-weight:700;font-size:14px;}
+.drawer-meta{display:flex;gap:13px;font-size:11px;color:var(--ink-soft);font-family:'JetBrains Mono',monospace;}
+.drawer-meta b{color:var(--terracotta);}
+.drawer-actions{display:flex;gap:8px;align-items:center;}
+.drawer-icon-btn{
+  width:28px;height:28px;border-radius:50%;background:var(--paper-deep);display:flex;align-items:center;
+  justify-content:center;cursor:pointer;font-size:12px;color:var(--ink-soft);border:none;
+}
+.drawer-icon-btn:hover{background:var(--terracotta-pale);}
+
+.day-tabs{display:flex;gap:6px;padding:0 20px 10px;flex-shrink:0;}
+.day-tab{
+  padding:5px 14px;border-radius:14px;font-size:11.5px;cursor:pointer;
+  background:var(--paper);color:var(--ink-soft);border:1px solid var(--line);
+}
+.day-tab.active{background:var(--indigo);color:white;border-color:var(--indigo);}
+
+.drawer-cards{display:flex;gap:10px;padding:4px 20px 16px;overflow-x:auto;flex:1;}
+.drawer-cards::-webkit-scrollbar{height:5px;}
+.drawer-cards::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px;}
+.stop-card{
+  flex:0 0 156px;background:var(--paper);border:1px solid var(--line);border-radius:11px;
+  padding:11px 13px;cursor:pointer;transition:all 0.2s ease;position:relative;
+}
+.stop-card.is-anchor{border-color:var(--jade);background:var(--jade-pale);}
+.stop-card:hover{border-color:var(--terracotta);transform:translateY(-2px);box-shadow:0 6px 14px rgba(43,41,38,0.08);}
+.stop-num{width:19px;height:19px;background:var(--terracotta);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:600;margin-bottom:7px;}
+.stop-card.is-anchor .stop-num{background:var(--jade);}
+.stop-name{font-size:12px;font-weight:600;margin-bottom:3px;line-height:1.3;}
+.stop-dur{font-size:9.5px;color:var(--ink-soft);font-family:'JetBrains Mono',monospace;}
+.stop-price{font-size:9.5px;color:var(--terracotta);margin-top:2px;}
+
+/* popup */
+.popup{
+  position:absolute;width:230px;background:var(--white);border-radius:13px;
+  box-shadow:0 16px 40px rgba(43,41,38,0.22);z-index:50;opacity:0;
+  transform:translateY(6px) scale(0.97);transition:opacity 0.2s ease, transform 0.2s ease;
+  pointer-events:none;overflow:hidden;border:1px solid var(--line);
+}
+.popup.show{opacity:1;transform:translateY(0) scale(1);pointer-events:auto;}
+.popup-img{height:80px;display:flex;align-items:center;justify-content:center;font-size:26px;position:relative;}
+.popup-tag{position:absolute;top:8px;left:8px;font-size:9.5px;padding:3px 9px;border-radius:10px;color:white;font-family:'JetBrains Mono',monospace;}
+.popup-body{padding:11px 13px 13px;}
+.popup-name{font-family:'Noto Serif SC',serif;font-weight:700;font-size:14px;color:var(--ink);margin-bottom:4px;}
+.popup-desc{font-size:11px;color:var(--ink-soft);line-height:1.5;margin-bottom:8px;}
+.popup-meta{display:flex;justify-content:space-between;font-size:10px;color:var(--ink-soft);border-top:1px solid var(--line);padding-top:7px;}
+.popup-meta b{color:var(--terracotta);font-family:'JetBrains Mono',monospace;}
+.popup-close{position:absolute;top:6px;right:6px;width:20px;height:20px;background:rgba(0,0,0,0.35);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;color:white;font-size:11px;}
+
+/* share card overlay (for html2canvas export) */
+.share-card{
+  position:absolute;left:-9999px;top:0;width:360px;background:var(--paper);padding:24px;
+  font-family:'Noto Sans SC',sans-serif;
+}
+.share-card .sc-title{font-family:'Noto Serif SC',serif;font-weight:700;font-size:18px;color:var(--ink);margin-bottom:4px;}
+.share-card .sc-sub{font-size:11px;color:var(--ink-soft);margin-bottom:14px;}
+.share-card .sc-stop{display:flex;gap:10px;align-items:flex-start;margin-bottom:10px;padding-bottom:10px;border-bottom:1px dashed var(--line);}
+.share-card .sc-num{width:22px;height:22px;background:var(--terracotta);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;}
+.share-card .sc-name{font-size:13px;font-weight:600;}
+.share-card .sc-info{font-size:10.5px;color:var(--ink-soft);margin-top:2px;}
+.share-card .sc-footer{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);font-size:10px;color:var(--ink-soft);display:flex;justify-content:space-between;}
+
+@media (max-width:900px){
+  .panel{max-height:62vh;}
+  .map-area{height:auto;flex:1;min-height:400px;}
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="panel" id="panel"><!-- filled by JS --></div>
+  <div class="map-area">
+    <div id="viewDiv"></div>
+    <div class="map-topbar">
+      <div class="topbar-title">东栅 · 西栅景区资源图（真实数据 681 点）</div>
+      <div class="legend-card" id="legendCard"></div>
+    </div>
+    <div class="empty-hint" id="emptyHint">
+      <span class="pulse"></span>
+      在左侧选择偏好标签，开始生成你的专属游览路线
+    </div>
+    <div class="popup" id="popup"></div>
+    <div class="itinerary-drawer" id="drawer">
+      <div class="drawer-handle">
+        <div class="drawer-title-group">
+          <div class="drawer-title" id="drawerTitle">推荐路线</div>
+          <div class="drawer-meta" id="drawerMeta"></div>
+        </div>
+        <div class="drawer-actions">
+          <button class="drawer-icon-btn" id="shareBtn" title="导出分享卡片">⤴</button>
+          <button class="drawer-icon-btn" id="drawerClose">✕</button>
+        </div>
+      </div>
+      <div class="day-tabs" id="dayTabs"></div>
+      <div class="drawer-cards" id="drawerCards"></div>
+    </div>
+    <div class="toast" id="toast"></div>
+  </div>
+</div>
+
+<div class="share-card" id="shareCard"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
