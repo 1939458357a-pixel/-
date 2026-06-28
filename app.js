@@ -22,7 +22,22 @@ const CATS = {
   service:    { label: '公共服务', color: '#8A8478', icon: '◆' }
 };
 
-// 美食子类匹配规则（基于真实数据 amap_type 字段统计得出的高频类型，而非凭空猜测）
+// 各类别二级分类匹配规则（均基于真实数据 amap_type 字段统计的高频类型，非凭空猜测）
+const ATTRACTION_SUBTYPES = [
+  { key: 'bridge',   label: '桥梁古迹',  match: ['桥', '国家级景点'] },
+  { key: 'temple',   label: '寺庙道观',  match: ['寺庙道观', '教堂'] },
+  { key: 'memorial', label: '纪念馆',    match: ['纪念馆'] },
+  { key: 'plaza',    label: '广场园林',  match: ['城市广场', '风景名胜'] },
+  { key: 'general',  label: '综合景点',  match: ['旅游景点'] }
+];
+
+const HERITAGE_SUBTYPES = [
+  { key: 'exhibit',  label: '展览/会展', match: ['会展中心', '展览馆', '美术馆'] },
+  { key: 'edu',      label: '科教文化',  match: ['科教文化场所', '图书馆', '科技馆'] },
+  { key: 'art',      label: '艺术/团体', match: ['文艺团体', '室内设施'] }
+];
+
+// 美食子类匹配规则（基于真实数据 amap_type 字段统计得出的高频类型）
 const FOOD_SUBTYPES = [
   { key: 'chinese',  label: '中餐/本帮菜', match: ['中餐厅', '特色', '地方风味', '综合酒楼', '浙江菜', '上海菜'] },
   { key: 'spicy',    label: '川湘菜',     match: ['四川菜', '川菜', '湖南菜', '湘菜', '火锅'] },
@@ -39,6 +54,22 @@ const STAY_SUBTYPES = [
   { key: 'outer',   label: '景区周边',    match: 'outer' }
 ];
 
+// 公共服务子类：数据非常扎实，三大类清晰可辨
+const SERVICE_SUBTYPES = [
+  { key: 'toilet',   label: '公共厕所',  match: ['公共厕所'] },
+  { key: 'parking',  label: '停车场',    match: ['停车场', '出入口', '出口', '入口'] },
+  { key: 'dock',     label: '码头/渡口', match: ['港口码头', '人渡口'] }
+];
+
+// 二级分类总表，方便统一遍历渲染UI
+const SUBTYPE_MAP = {
+  attraction: ATTRACTION_SUBTYPES,
+  heritage: HERITAGE_SUBTYPES,
+  food: FOOD_SUBTYPES,
+  stay: STAY_SUBTYPES,
+  service: SERVICE_SUBTYPES
+};
+
 // 天数/时长档位定义
 const DURATION_OPTIONS = [
   { key: 'half',  title: '半日游',   sub: '约4小时',  days: 1, hoursPerDay: 4 },
@@ -52,8 +83,9 @@ const state = {
   allFeatures: [],          // 从FeatureLayer加载的全部点位（已清洗为JS对象数组）
   activeLayers: new Set(Object.keys(CATS)),
   selectedPrefs: new Set(),
-  selectedFoodSub: new Set(),
-  selectedStaySub: new Set(),
+  selectedSubs: {           // 每个类别对应一个二级分类的选中集合，通用机制
+    attraction: new Set(), heritage: new Set(), food: new Set(), stay: new Set(), service: new Set()
+  },
   selectedDuration: 'half',
   accessibleMode: false,
   currentItinerary: null,   // { days: [ { dayIndex, stops:[...], anchor or null } ], totalBudget, ... }
@@ -100,15 +132,7 @@ function buildPanel() {
     <div class="section">
       <div class="section-label">游览偏好</div>
       <div class="pref-grid" id="prefGrid"></div>
-
-      <div class="subpref-wrap" id="foodSubWrap">
-        <div class="subpref-title">美食细分（可多选，不选则不限）</div>
-        <div class="subpref-grid" id="foodSubGrid"></div>
-      </div>
-      <div class="subpref-wrap" id="staySubWrap">
-        <div class="subpref-title">住宿区域（可多选，不选则不限）</div>
-        <div class="subpref-grid" id="staySubGrid"></div>
-      </div>
+      <div id="subprefContainer"></div>
     </div>
 
     <div class="section">
@@ -148,7 +172,7 @@ function buildPanel() {
   `;
 
   buildPrefPills();
-  buildSubPills();
+  renderSubprefContainer();
   buildDurationButtons();
   bindPanelEvents();
 }
@@ -167,44 +191,47 @@ function buildPrefPills() {
       pill.classList.toggle('selected');
       if (state.selectedPrefs.has(key)) state.selectedPrefs.delete(key);
       else state.selectedPrefs.add(key);
-
-      document.getElementById('foodSubWrap').classList.toggle('show', state.selectedPrefs.has('food'));
-      document.getElementById('staySubWrap').classList.toggle('show', state.selectedPrefs.has('stay'));
+      renderSubprefContainer();
       updatePrediction();
     });
     prefGrid.appendChild(pill);
   });
 }
 
-function buildSubPills() {
-  const foodGrid = document.getElementById('foodSubGrid');
-  foodGrid.innerHTML = '';
-  FOOD_SUBTYPES.forEach(s => {
-    const chip = document.createElement('div');
-    chip.className = 'subpref-chip';
-    chip.textContent = s.label;
-    chip.addEventListener('click', () => {
-      chip.classList.toggle('selected');
-      if (state.selectedFoodSub.has(s.key)) state.selectedFoodSub.delete(s.key);
-      else state.selectedFoodSub.add(s.key);
-      updatePrediction();
-    });
-    foodGrid.appendChild(chip);
-  });
+/* 通用二级分类区：根据当前选中的偏好，动态生成对应的子类筛选chip组 */
+function renderSubprefContainer() {
+  const container = document.getElementById('subprefContainer');
+  container.innerHTML = '';
+  // 按 CATS 的固定顺序渲染，保持视觉顺序稳定
+  Object.keys(CATS).forEach(catKey => {
+    if (!state.selectedPrefs.has(catKey)) return;
+    const subtypes = SUBTYPE_MAP[catKey];
+    if (!subtypes || subtypes.length === 0) return;
 
-  const stayGrid = document.getElementById('staySubGrid');
-  stayGrid.innerHTML = '';
-  STAY_SUBTYPES.forEach(s => {
-    const chip = document.createElement('div');
-    chip.className = 'subpref-chip';
-    chip.textContent = s.label;
-    chip.addEventListener('click', () => {
-      chip.classList.toggle('selected');
-      if (state.selectedStaySub.has(s.key)) state.selectedStaySub.delete(s.key);
-      else state.selectedStaySub.add(s.key);
-      updatePrediction();
+    const wrap = document.createElement('div');
+    wrap.className = 'subpref-wrap show';
+    const title = document.createElement('div');
+    title.className = 'subpref-title';
+    title.textContent = `${CATS[catKey].label}细分（可多选，不选则不限）`;
+    const grid = document.createElement('div');
+    grid.className = 'subpref-grid';
+
+    subtypes.forEach(s => {
+      const chip = document.createElement('div');
+      chip.className = 'subpref-chip' + (state.selectedSubs[catKey].has(s.key) ? ' selected' : '');
+      chip.textContent = s.label;
+      chip.addEventListener('click', () => {
+        chip.classList.toggle('selected');
+        if (state.selectedSubs[catKey].has(s.key)) state.selectedSubs[catKey].delete(s.key);
+        else state.selectedSubs[catKey].add(s.key);
+        updatePrediction();
+      });
+      grid.appendChild(chip);
     });
-    stayGrid.appendChild(chip);
+
+    wrap.appendChild(title);
+    wrap.appendChild(grid);
+    container.appendChild(wrap);
   });
 }
 
@@ -402,7 +429,8 @@ function normalizeFeature(feature) {
     cost: costVal,
     longitude: geom ? geom.longitude : a.longitude,
     latitude: geom ? geom.latitude : a.latitude,
-    foodSub: classifyFoodSub(a.amap_type, a.name),
+    foodSub: classifySubtype(a.category, a.amap_type, a.name),
+    subType: classifySubtype(a.category, a.amap_type, a.name),
     zoneArea: classifyZoneArea(a.address, geom ? geom.longitude : a.longitude, geom ? geom.latitude : a.latitude),
     outdoor: classifyOutdoor(a.category, a.amap_type),
     raw: a
@@ -417,10 +445,13 @@ function parseCost(costStr) {
   return isNaN(num) ? null : num;
 }
 
-function classifyFoodSub(amapType, name) {
+function classifySubtype(category, amapType, name) {
   const text = (amapType || '') + (name || '');
-  for (const sub of FOOD_SUBTYPES) {
-    if (sub.match.some(kw => text.includes(kw))) return sub.key;
+  if (category === 'stay') return null; // 住宿单独用 classifyZoneArea 处理
+  const subtypes = SUBTYPE_MAP[category];
+  if (!subtypes) return null;
+  for (const sub of subtypes) {
+    if (Array.isArray(sub.match) && sub.match.some(kw => text.includes(kw))) return sub.key;
   }
   return null;
 }
@@ -536,12 +567,13 @@ function getDurationConfig() {
 function buildCandidatePool(seed = 0) {
   let pool = state.allFeatures.filter(f => state.selectedPrefs.has(f.category));
 
-  if (state.selectedPrefs.has('food') && state.selectedFoodSub.size > 0) {
-    pool = pool.filter(f => f.category !== 'food' || state.selectedFoodSub.has(f.foodSub));
-  }
-  if (state.selectedPrefs.has('stay') && state.selectedStaySub.size > 0) {
-    pool = pool.filter(f => f.category !== 'stay' || state.selectedStaySub.has(f.zoneArea));
-  }
+  // 通用二级分类过滤：住宿用zoneArea字段，其余类别用subType字段
+  state.selectedPrefs.forEach(catKey => {
+    const subSet = state.selectedSubs[catKey];
+    if (!subSet || subSet.size === 0) return;
+    const fieldName = catKey === 'stay' ? 'zoneArea' : 'subType';
+    pool = pool.filter(f => f.category !== catKey || subSet.has(f[fieldName]));
+  });
 
   // 无障碍模式：优先过滤掉评分缺失或地址含"梯/楼"等可能无障碍不友好的点（简化规则示意）
   if (state.accessibleMode) {
@@ -561,6 +593,38 @@ function buildCandidatePool(seed = 0) {
   });
   pool.sort((a, b) => b._score - a._score);
   return pool;
+}
+
+/* ---- 地理聚类选点：在"高分点优先"的基础上，引入空间紧凑度约束 ----
+   解决"评分排序后直接切片"导致选出的点散落各处、当天路线绕远路的问题。
+   做法：从评分最高的点开始，每次从剩余候选里选"评分高且离已选点集合较近"的点加入，
+   用 score - 距离惩罚 的方式做权衡，而不是单纯看评分顺序。
+*/
+function selectGeoClusteredStops(sortedPool, count, anchorPoint) {
+  if (sortedPool.length <= count) return sortedPool.slice(0, count);
+
+  const selected = [];
+  let remaining = [...sortedPool];
+
+  // 第一个点：选评分最高的（即排序后的第一个）
+  selected.push(remaining[0]);
+  remaining.splice(0, 1);
+
+  while (selected.length < count && remaining.length > 0) {
+    // 计算每个候选点到"已选点集合"的最近距离，作为空间惩罚项
+    let bestIdx = 0;
+    let bestValue = -Infinity;
+    remaining.forEach((cand, idx) => {
+      const minDistToSelected = selected.reduce((min, s) =>
+        Math.min(min, haversineKm(cand, s)), Infinity);
+      // 评分权重0.6 + 距离惩罚权重0.4(距离越近越好，每500米扣约0.3分)
+      const value = cand._score * 0.6 - (minDistToSelected * 0.6) * 0.4;
+      if (value > bestValue) { bestValue = value; bestIdx = idx; }
+    });
+    selected.push(remaining[bestIdx]);
+    remaining.splice(bestIdx, 1);
+  }
+  return selected;
 }
 
 /* ---- 最近邻排序 ---- */
@@ -601,7 +665,8 @@ function buildMultiDayItinerary(seed = 0) {
 
   for (let d = 0; d < durCfg.days; d++) {
     const dayPool = nonStayPool.filter(f => !usedIds.has(f.objectId));
-    const picked = dayPool.slice(0, stopsPerDay);
+    // 用地理聚类选点：避免高分点散落各处导致路线绕远路，而是在"评分高"与"空间紧凑"间做权衡
+    const picked = selectGeoClusteredStops(dayPool, stopsPerDay, lastAnchor);
     picked.forEach(p => usedIds.add(p.objectId));
 
     let ordered = nearestNeighborOrder(picked, lastAnchor);
@@ -766,6 +831,10 @@ function highlightRouteOnMap(stops) {
 
 function drawDayRouteOnMap(day, realRouteInfo) {
   const { Graphic, Point } = window.EsriModules;
+  if (state.flowAnimTimer) {
+    clearInterval(state.flowAnimTimer);
+    state.flowAnimTimer = null;
+  }
   state.routeLayer.removeAll();
   state.badgeLayer.removeAll();
 
@@ -864,6 +933,68 @@ function drawDayRouteOnMap(day, realRouteInfo) {
     target: stops.map(s => [s.longitude, s.latitude]),
     padding: { top: 60, bottom: 200, left: 40, right: 40 }
   }, { duration: 800 });
+
+  // 流动光点动画：沿路径周期性移动，暗示游览方向（替代静态直线的单薄感）
+  startFlowingDot(paths);
+}
+
+/* ---- 沿路径坐标插值，计算t∈[0,1]位置上的经纬度坐标 ---- */
+function interpolateAlongPath(pathCoords, t) {
+  if (!pathCoords || pathCoords.length < 2) return pathCoords ? pathCoords[0] : null;
+  const segLens = [];
+  let total = 0;
+  for (let i = 0; i < pathCoords.length - 1; i++) {
+    const d = haversineKm(
+      { longitude: pathCoords[i][0], latitude: pathCoords[i][1] },
+      { longitude: pathCoords[i+1][0], latitude: pathCoords[i+1][1] }
+    );
+    segLens.push(d);
+    total += d;
+  }
+  if (total === 0) return pathCoords[0];
+  let target = t * total;
+  for (let i = 0; i < segLens.length; i++) {
+    if (target <= segLens[i] || i === segLens.length - 1) {
+      const localT = segLens[i] === 0 ? 0 : target / segLens[i];
+      const [lng1, lat1] = pathCoords[i];
+      const [lng2, lat2] = pathCoords[i + 1];
+      return [lng1 + (lng2 - lng1) * localT, lat1 + (lat2 - lat1) * localT];
+    }
+    target -= segLens[i];
+  }
+  return pathCoords[pathCoords.length - 1];
+}
+
+function startFlowingDot(pathCoords) {
+  const { Graphic, Point } = window.EsriModules;
+  if (state.flowAnimTimer) {
+    clearInterval(state.flowAnimTimer);
+    state.flowAnimTimer = null;
+  }
+  if (!pathCoords || pathCoords.length < 2) return;
+
+  const flowLayer = state.badgeLayer; // 复用badge图层，随路线一起清除
+  let t = 0;
+  const flowGraphic = new Graphic({
+    geometry: new Point({ longitude: pathCoords[0][0], latitude: pathCoords[0][1] }),
+    symbol: {
+      type: "simple-marker",
+      style: "circle",
+      color: [255, 255, 255, 0.95],
+      size: 9,
+      outline: { color: "#B8693D", width: 2.5 }
+    }
+  });
+  flowLayer.add(flowGraphic);
+
+  state.flowAnimTimer = setInterval(() => {
+    t += 0.012;
+    if (t > 1) t = 0;
+    const pos = interpolateAlongPath(pathCoords, t);
+    if (pos) {
+      flowGraphic.geometry = new Point({ longitude: pos[0], latitude: pos[1] });
+    }
+  }, 60);
 }
 
 /* ---- 在路径每段的中点画一个指向下一站的小箭头，提示游览方向 ---- */
@@ -942,11 +1073,12 @@ function renderItineraryDrawer(activeDayIndex) {
   cardsEl.innerHTML = activeDay.stops.map((s, i) => {
     const isAnchor = activeDay.anchor && s.objectId === activeDay.anchor.objectId;
     const priceText = s.cost ? `¥${s.cost}` : '';
+    const subLabel = SUBTYPE_MAP[s.category]?.find(sub => sub.key === s.subType)?.label;
     return `
     <div class="stop-card ${isAnchor ? 'is-anchor' : ''}" data-id="${s.objectId}">
       <div class="stop-num">${isAnchor ? '🏠' : i + 1}</div>
       <div class="stop-name">${s.name}</div>
-      <div class="stop-dur">${CATS[s.category].label}${s.rating ? ' · ⭐' + s.rating : ''}</div>
+      <div class="stop-dur">${subLabel || CATS[s.category].label}${s.rating ? ' · ⭐' + s.rating : ''}</div>
       ${priceText ? `<div class="stop-price">${priceText}</div>` : ''}
     </div>`;
   }).join('');
@@ -1049,15 +1181,21 @@ function showFeaturePopupByData(feature, screenEvt) {
   const mapAreaRect = document.querySelector('.map-area').getBoundingClientRect();
   let left = screenPoint.x + 18;
   let top = screenPoint.y - 90;
-  if (left + 230 > mapAreaRect.width - 10) left = screenPoint.x - 254;
+  if (left + 240 > mapAreaRect.width - 10) left = screenPoint.x - 264;
   if (top < 10) top = 10;
-  if (top + 200 > mapAreaRect.height - 10) top = mapAreaRect.height - 220;
+  if (top + 260 > mapAreaRect.height - 10) top = mapAreaRect.height - 270;
 
   popup.style.left = left + 'px';
   popup.style.top = top + 'px';
 
-  const priceText = feature.cost ? `¥${feature.cost}` : '价格请咨询';
   const ratingText = feature.rating ? `⭐ ${feature.rating}` : '暂无评分';
+  const zoneText = feature.zoneArea === 'west' ? '西栅核心区' : feature.zoneArea === 'east' ? '东栅核心区' : '景区周边';
+  const subLabel = SUBTYPE_MAP[feature.category]?.find(s => s.key === feature.subType)?.label;
+  const telClean = (feature.tel && !['[]','nan',''].includes(String(feature.tel).trim())) ? feature.tel : null;
+
+  // 标签行：区域 + 子分类，是介绍内容的主体（基于真实字段拼接，不编造信息）
+  const tagPills = [zoneText, subLabel].filter(Boolean)
+    .map(t => `<span class="popup-pill">${t}</span>`).join('');
 
   popup.innerHTML = `
     <div class="popup-img" style="background:linear-gradient(135deg,${cfg.color}33,${cfg.color}11)">
@@ -1067,10 +1205,11 @@ function showFeaturePopupByData(feature, screenEvt) {
     </div>
     <div class="popup-body">
       <div class="popup-name">${feature.name}</div>
+      <div class="popup-pills">${tagPills}</div>
       <div class="popup-desc">${feature.address || '暂无详细地址信息'}</div>
+      ${telClean ? `<div class="popup-tel">☎ ${telClean}</div>` : ''}
       <div class="popup-meta">
         <span>${ratingText}</span>
-        <span style="color:var(--terracotta)">${priceText}</span>
       </div>
     </div>
   `;
