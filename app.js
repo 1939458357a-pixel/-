@@ -7,6 +7,10 @@
 // ===== 全局配置 =====
 const FEATURE_LAYER_URL = "https://services8.arcgis.com/HOpNJOCGcy3Gi8RS/arcgis/rest/services/%E4%B9%8C%E9%95%87/FeatureServer/0";
 
+// ArcGIS Routing 服务所需的 API Key（需在 ArcGIS Developer 控制台生成，
+// 并勾选 "Routing" / Network Analysis 权限。未填写时，系统会自动降级为直线距离估算，不影响其他功能运行）
+const ARCGIS_ROUTING_API_KEY = "在这里填入你的API Key";
+
 // 乌镇景区中心坐标（西栅入口，石佛南路18号）
 const CENTER = { longitude: 120.488115, latitude: 30.753251 };
 
@@ -18,18 +22,21 @@ const CATS = {
   service:    { label: '公共服务', color: '#8A8478', icon: '◆' }
 };
 
-// 美食子类关键词匹配规则（基于 amap_type / name 简单规则判断）
+// 美食子类匹配规则（基于真实数据 amap_type 字段统计得出的高频类型，而非凭空猜测）
 const FOOD_SUBTYPES = [
-  { key: 'jiangnan', label: '江南菜',  match: ['中餐', '江南', '本帮'] },
-  { key: 'snack',    label: '小吃',    match: ['小吃', '糕点', '点心'] },
-  { key: 'seafood',  label: '河鲜',    match: ['海鲜', '河鲜', '水产'] },
-  { key: 'cafe',     label: '茶饮咖啡', match: ['咖啡', '茶艺', '茶馆'] }
+  { key: 'chinese',  label: '中餐/本帮菜', match: ['中餐厅', '特色', '地方风味', '综合酒楼', '浙江菜', '上海菜'] },
+  { key: 'spicy',    label: '川湘菜',     match: ['四川菜', '川菜', '湖南菜', '湘菜', '火锅'] },
+  { key: 'dessert',  label: '甜品/冷饮',   match: ['甜品店', '冷饮店'] },
+  { key: 'cafe',     label: '咖啡/茶馆',   match: ['咖啡厅', '茶艺馆', '星巴克'] },
+  { key: 'fast',     label: '快餐/休闲',   match: ['快餐厅', '休闲餐饮'] }
 ];
 
+// 住宿子类：高德免费接口对住宿POI的价格字段几乎全部缺失（实测176个住宿点仅1个有价格数据），
+// 因此改用更可靠的"所在区域"作为细分维度，而非不可靠的价位字段
 const STAY_SUBTYPES = [
-  { key: 'budget',  label: '经济型(¥)',   match: c => c >= 0 && c < 200 },
-  { key: 'mid',     label: '舒适型(¥¥)',  match: c => c >= 200 && c < 500 },
-  { key: 'premium', label: '高端型(¥¥¥)', match: c => c >= 500 }
+  { key: 'west',    label: '西栅核心区',  match: 'west' },
+  { key: 'east',    label: '东栅核心区',  match: 'east' },
+  { key: 'outer',   label: '景区周边',    match: 'outer' }
 ];
 
 // 天数/时长档位定义
@@ -99,7 +106,7 @@ function buildPanel() {
         <div class="subpref-grid" id="foodSubGrid"></div>
       </div>
       <div class="subpref-wrap" id="staySubWrap">
-        <div class="subpref-title">住宿价位（可多选，不选则不限）</div>
+        <div class="subpref-title">住宿区域（可多选，不选则不限）</div>
         <div class="subpref-grid" id="staySubGrid"></div>
       </div>
     </div>
@@ -396,6 +403,7 @@ function normalizeFeature(feature) {
     longitude: geom ? geom.longitude : a.longitude,
     latitude: geom ? geom.latitude : a.latitude,
     foodSub: classifyFoodSub(a.amap_type, a.name),
+    zoneArea: classifyZoneArea(a.address, geom ? geom.longitude : a.longitude, geom ? geom.latitude : a.latitude),
     outdoor: classifyOutdoor(a.category, a.amap_type),
     raw: a
   };
@@ -415,6 +423,22 @@ function classifyFoodSub(amapType, name) {
     if (sub.match.some(kw => text.includes(kw))) return sub.key;
   }
   return null;
+}
+
+// 东栅、西栅大致中心坐标（用于区域归属判断）；地址文本里若直接写明东栅/西栅则优先采用
+const WEST_ZHA_CENTER = { longitude: 120.488115, latitude: 30.753251 };
+const EAST_ZHA_CENTER = { longitude: 120.498, latitude: 30.751 };
+
+function classifyZoneArea(address, lng, lat) {
+  const addr = address || '';
+  if (addr.includes('西栅')) return 'west';
+  if (addr.includes('东栅')) return 'east';
+  if (lng == null || lat == null) return 'outer';
+  const distToWest = haversineKm({ longitude: lng, latitude: lat }, WEST_ZHA_CENTER);
+  const distToEast = haversineKm({ longitude: lng, latitude: lat }, EAST_ZHA_CENTER);
+  const nearest = Math.min(distToWest, distToEast);
+  if (nearest > 1.0) return 'outer'; // 离两个核心区都超过1公里，归为"景区周边"
+  return distToWest <= distToEast ? 'west' : 'east';
 }
 
 function classifyOutdoor(category, amapType) {
@@ -516,10 +540,7 @@ function buildCandidatePool(seed = 0) {
     pool = pool.filter(f => f.category !== 'food' || state.selectedFoodSub.has(f.foodSub));
   }
   if (state.selectedPrefs.has('stay') && state.selectedStaySub.size > 0) {
-    pool = pool.filter(f => {
-      if (f.category !== 'stay') return true;
-      return STAY_SUBTYPES.some(s => state.selectedStaySub.has(s.key) && f.cost !== null && s.match(f.cost));
-    });
+    pool = pool.filter(f => f.category !== 'stay' || state.selectedStaySub.has(f.zoneArea));
   }
 
   // 无障碍模式：优先过滤掉评分缺失或地址含"梯/楼"等可能无障碍不友好的点（简化规则示意）
@@ -587,9 +608,15 @@ function buildMultiDayItinerary(seed = 0) {
 
     let anchor = null;
     // 多日模式下，除最后一天，每天末尾固定一个住宿锚点
+    // 锚点选择规则：在"未被使用的住宿候选"中，选择离当天最后一个游览点地理距离最近的（而不是仅按评分），
+    // 避免住宿点离当天行程过远导致路线出现不合理的长距离跳跃
     if (needsStay && d < durCfg.days - 1) {
-      anchor = stayCandidates.find(s => !usedIds.has(s.objectId)) || stayCandidates[0];
-      if (anchor) {
+      const lastStop = ordered.length > 0 ? ordered[ordered.length - 1] : lastAnchor;
+      const availableStays = stayCandidates.filter(s => !usedIds.has(s.objectId));
+      if (availableStays.length > 0) {
+        anchor = availableStays.reduce((best, s) =>
+          haversineKm(s, lastStop) < haversineKm(best, lastStop) ? s : best
+        , availableStays[0]);
         usedIds.add(anchor.objectId);
         ordered.push(anchor);
         lastAnchor = anchor; // 下一天从住宿点出发
@@ -647,6 +674,12 @@ function computeRealRoute(stops) {
   const { route, RouteParameters, FeatureSet, Graphic, Point } = window.EsriModules;
   if (stops.length < 2) return Promise.resolve(null);
 
+  // 没有配置有效的API Key时，直接跳过网络请求，避免必然失败的调用占用时间
+  if (!ARCGIS_ROUTING_API_KEY || ARCGIS_ROUTING_API_KEY.includes('在这里填入')) {
+    console.warn("未配置 ARCGIS_ROUTING_API_KEY，路网规划已跳过，使用直线距离估算");
+    return Promise.resolve(null);
+  }
+
   const routeUrl = "https://route-api.arcgis.com/arcgis/rest/services/World/Route/NAServer/Route_World";
 
   const stopGraphics = stops.map(s => new Graphic({
@@ -654,6 +687,7 @@ function computeRealRoute(stops) {
   }));
 
   const routeParams = new RouteParameters({
+    apiKey: ARCGIS_ROUTING_API_KEY,
     stops: new FeatureSet({ features: stopGraphics }),
     outSpatialReference: { wkid: 4326 },
     travelMode: null,        // 使用服务默认步行/驾车配置；若服务支持travelMode列表可在此指定"Walking"
@@ -664,9 +698,6 @@ function computeRealRoute(stops) {
     .then(result => {
       const routeResult = result.routeResults[0];
       const geom = routeResult.route.geometry;
-      const totalMeters = routeResult.route.attributes.Total_Kilometers
-        ? routeResult.route.attributes.Total_Kilometers * 1000
-        : null;
       return {
         geometry: geom,
         distanceKm: routeResult.route.attributes.Total_Kilometers ?? null,
@@ -674,7 +705,7 @@ function computeRealRoute(stops) {
       };
     })
     .catch(err => {
-      console.warn("真实路网规划调用失败，回退为直线距离估算:", err);
+      console.warn("真实路网规划调用失败，回退为直线距离估算。错误详情:", err && err.message ? err.message : err);
       return null;
     });
 }
@@ -752,34 +783,80 @@ function drawDayRouteOnMap(day, realRouteInfo) {
     };
   }
 
-  const routeGraphic = new Graphic({
+  // 主路线：稍粗的描边线 + 内部主线，营造层次感（替代单一直线的单薄感）
+  const routeOutline = new Graphic({
     geometry: pathGeometry,
     symbol: {
       type: "simple-line",
-      color: [184, 105, 61, 0.9],
-      width: 4,
+      color: [184, 105, 61, 0.35],
+      width: 9,
       cap: "round",
       join: "round"
     }
   });
+  const routeGraphic = new Graphic({
+    geometry: pathGeometry,
+    symbol: {
+      type: "simple-line",
+      color: [184, 105, 61, 0.95],
+      width: 4,
+      cap: "round",
+      join: "round",
+      style: "solid"
+    }
+  });
+  state.routeLayer.add(routeOutline);
   state.routeLayer.add(routeGraphic);
 
-  // 序号徽标
+  // 在每段路径中点插入方向箭头，提示游览前进方向
+  const paths = pathGeometry.paths ? pathGeometry.paths[0] : null;
+  if (paths && paths.length >= 2) {
+    addDirectionArrows(paths);
+  }
+
+  // 站点标签：编号小圆点 + 名称标签框（替代裸露数字，更直观）
   stops.forEach((s, i) => {
     const isAnchor = day.anchor && s.objectId === day.anchor.objectId;
-    const badge = new Graphic({
+    const bgColor = isAnchor ? "#5C7A5C" : "#B8693D";
+    const shortName = s.name.length > 6 ? s.name.slice(0, 6) + '…' : s.name;
+
+    // 编号圆点（精确定位在坐标点上）
+    const dot = new Graphic({
+      geometry: new Point({ longitude: s.longitude, latitude: s.latitude }),
+      symbol: {
+        type: "simple-marker",
+        style: "circle",
+        color: bgColor,
+        size: 15,
+        outline: { color: "white", width: 1.8 }
+      }
+    });
+    const dotLabel = new Graphic({
       geometry: new Point({ longitude: s.longitude, latitude: s.latitude }),
       symbol: {
         type: "text",
-        text: String(i + 1),
+        text: isAnchor ? '宿' : String(i + 1),
         color: "white",
-        haloColor: isAnchor ? "#5C7A5C" : "#B8693D",
-        haloSize: 8,
-        font: { size: 11, weight: "bold", family: "JetBrains Mono" },
-        yoffset: 14
+        font: { size: 10, weight: "bold", family: "JetBrains Mono" }
       }
     });
-    state.badgeLayer.add(badge);
+    // 名称标签（悬浮在点位上方，文字带描边背景，始终可读）
+    const nameLabel = new Graphic({
+      geometry: new Point({ longitude: s.longitude, latitude: s.latitude }),
+      symbol: {
+        type: "text",
+        text: shortName,
+        color: "#2B2926",
+        haloColor: "#FFFEFB",
+        haloSize: 2.2,
+        font: { size: 11, weight: "bold", family: "Noto Sans SC" },
+        yoffset: 18,
+        horizontalAlignment: "center"
+      }
+    });
+    state.badgeLayer.add(dot);
+    state.badgeLayer.add(dotLabel);
+    state.badgeLayer.add(nameLabel);
   });
 
   // 视图缩放到当天路线范围
@@ -787,6 +864,37 @@ function drawDayRouteOnMap(day, realRouteInfo) {
     target: stops.map(s => [s.longitude, s.latitude]),
     padding: { top: 60, bottom: 200, left: 40, right: 40 }
   }, { duration: 800 });
+}
+
+/* ---- 在路径每段的中点画一个指向下一站的小箭头，提示游览方向 ---- */
+function addDirectionArrows(pathCoords) {
+  const { Graphic, Point } = window.EsriModules;
+  for (let i = 0; i < pathCoords.length - 1; i++) {
+    const [lng1, lat1] = pathCoords[i];
+    const [lng2, lat2] = pathCoords[i + 1];
+    const midLng = (lng1 + lng2) / 2;
+    const midLat = (lat1 + lat2) / 2;
+
+    // 计算方向角度（以正北为0度，顺时针）
+    const dx = lng2 - lng1;
+    const dy = lat2 - lat1;
+    const angleRad = Math.atan2(dx, dy);
+    const angleDeg = (angleRad * 180 / Math.PI + 360) % 360;
+
+    const arrow = new Graphic({
+      geometry: new Point({ longitude: midLng, latitude: midLat }),
+      symbol: {
+        type: "text",
+        text: "▲",
+        color: "#B8693D",
+        haloColor: "#FFFEFB",
+        haloSize: 1.5,
+        angle: angleDeg,
+        font: { size: 13, weight: "bold" }
+      }
+    });
+    state.routeLayer.add(arrow);
+  }
 }
 
 /* ==================== 行程抽屉 UI 渲染（多日Tab切换） ==================== */
