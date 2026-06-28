@@ -252,7 +252,7 @@ body{
 
 /* popup */
 .popup{
-  position:absolute;width:230px;background:var(--white);border-radius:13px;
+  position:absolute;width:248px;background:var(--white);border-radius:13px;
   box-shadow:0 16px 40px rgba(43,41,38,0.22);z-index:50;opacity:0;
   transform:translateY(6px) scale(0.97);transition:opacity 0.2s ease, transform 0.2s ease;
   pointer-events:none;overflow:hidden;border:1px solid var(--line);
@@ -262,7 +262,10 @@ body{
 .popup-tag{position:absolute;top:8px;left:8px;font-size:9.5px;padding:3px 9px;border-radius:10px;color:white;font-family:'JetBrains Mono',monospace;}
 .popup-body{padding:11px 13px 13px;}
 .popup-name{font-family:'Noto Serif SC',serif;font-weight:700;font-size:14px;color:var(--ink);margin-bottom:4px;}
+.popup-pills{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px;}
+.popup-pill{font-size:9.5px;padding:2.5px 8px;border-radius:9px;background:var(--paper-deep);color:var(--ink-soft);}
 .popup-desc{font-size:11px;color:var(--ink-soft);line-height:1.5;margin-bottom:8px;}
+.popup-tel{font-size:10.5px;color:var(--indigo);margin-bottom:7px;font-family:'JetBrains Mono',monospace;}
 .popup-meta{display:flex;justify-content:space-between;font-size:10px;color:var(--ink-soft);border-top:1px solid var(--line);padding-top:7px;}
 .popup-meta b{color:var(--terracotta);font-family:'JetBrains Mono',monospace;}
 .popup-close{position:absolute;top:6px;right:6px;width:20px;height:20px;background:rgba(0,0,0,0.35);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;color:white;font-size:11px;}
