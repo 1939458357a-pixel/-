@@ -32,33 +32,34 @@ const ATTRACTION_SUBTYPES = [
 ];
 
 const HERITAGE_SUBTYPES = [
-  { key: 'exhibit',  label: '展览/会展', match: ['会展中心', '展览馆', '美术馆'] },
-  { key: 'edu',      label: '科教文化',  match: ['科教文化场所', '图书馆', '科技馆'] },
-  { key: 'art',      label: '艺术/团体', match: ['文艺团体', '室内设施'] }
+  { key: 'exhibit',  label: '展览会展', match: ['会展中心', '展览馆', '美术馆'] },
+  { key: 'edu',      label: '科教文化', match: ['科教文化场所', '图书馆', '科技馆'] },
+  { key: 'art',      label: '艺术团体', match: ['文艺团体', '室内设施'] }
 ];
 
 // 美食子类匹配规则（基于真实数据 amap_type 字段统计得出的高频类型）
 const FOOD_SUBTYPES = [
-  { key: 'chinese',  label: '中餐/本帮菜', match: ['中餐厅', '特色', '地方风味', '综合酒楼', '浙江菜', '上海菜'] },
-  { key: 'spicy',    label: '川湘菜',     match: ['四川菜', '川菜', '湖南菜', '湘菜', '火锅'] },
-  { key: 'dessert',  label: '甜品/冷饮',   match: ['甜品店', '冷饮店'] },
-  { key: 'cafe',     label: '咖啡/茶馆',   match: ['咖啡厅', '茶艺馆', '星巴克'] },
-  { key: 'fast',     label: '快餐/休闲',   match: ['快餐厅', '休闲餐饮'] }
+  { key: 'chinese',  label: '江南菜馆', match: ['中餐厅', '特色', '地方风味', '综合酒楼', '浙江菜', '上海菜'] },
+  { key: 'spicy',    label: '川湘菜',   match: ['四川菜', '川菜', '湖南菜', '湘菜', '火锅'] },
+  { key: 'dessert',  label: '甜品冷饮', match: ['甜品店', '冷饮店'] },
+  { key: 'cafe',     label: '咖啡茶馆', match: ['咖啡厅', '茶艺馆', '星巴克'] },
+  { key: 'fast',     label: '快餐休闲', match: ['快餐厅', '休闲餐饮'] }
 ];
 
-// 住宿子类：高德免费接口对住宿POI的价格字段几乎全部缺失（实测176个住宿点仅1个有价格数据），
-// 因此改用更可靠的"所在区域"作为细分维度，而非不可靠的价位字段
+// 住宿子类：高德免费接口对住宿POI的价格字段几乎全部缺失（实测176个住宿点仅1个有价格数据，
+// 不足以支撑真实价格分类），改用评分作为档位代理指标（146/176有评分，分布合理）。
+// 这是评分代理，不是价格——UI上明确标注"评分"而非用¥符号伪装成价格。
 const STAY_SUBTYPES = [
-  { key: 'west',    label: '西栅核心区',  match: 'west' },
-  { key: 'east',    label: '东栅核心区',  match: 'east' },
-  { key: 'outer',   label: '景区周边',    match: 'outer' }
+  { key: 'high',  label: '高分优选', match: r => r != null && r > 4.3 },
+  { key: 'mid',   label: '口碑适中', match: r => r != null && r > 3.5 && r <= 4.3 },
+  { key: 'low',   label: '待提升',   match: r => r != null && r <= 3.5 }
 ];
 
 // 公共服务子类：数据非常扎实，三大类清晰可辨
 const SERVICE_SUBTYPES = [
-  { key: 'toilet',   label: '公共厕所',  match: ['公共厕所'] },
-  { key: 'parking',  label: '停车场',    match: ['停车场', '出入口', '出口', '入口'] },
-  { key: 'dock',     label: '码头/渡口', match: ['港口码头', '人渡口'] }
+  { key: 'toilet',   label: '公共厕所', match: ['公共厕所'] },
+  { key: 'parking',  label: '停车场',   match: ['停车场', '出入口', '出口', '入口'] },
+  { key: 'dock',     label: '码头渡口', match: ['港口码头', '人渡口'] }
 ];
 
 // 二级分类总表，方便统一遍历渲染UI
@@ -212,7 +213,8 @@ function renderSubprefContainer() {
     wrap.className = 'subpref-wrap show';
     const title = document.createElement('div');
     title.className = 'subpref-title';
-    title.textContent = `${CATS[catKey].label}细分（可多选，不选则不限）`;
+    const titleSuffix = catKey === 'stay' ? '细分（按大众评分，可多选）' : '细分（可多选，不选则不限）';
+    title.textContent = `${CATS[catKey].label}${titleSuffix}`;
     const grid = document.createElement('div');
     grid.className = 'subpref-grid';
 
@@ -429,8 +431,8 @@ function normalizeFeature(feature) {
     cost: costVal,
     longitude: geom ? geom.longitude : a.longitude,
     latitude: geom ? geom.latitude : a.latitude,
-    foodSub: classifySubtype(a.category, a.amap_type, a.name),
-    subType: classifySubtype(a.category, a.amap_type, a.name),
+    foodSub: classifySubtype(a.category, a.amap_type, a.name, ratingVal),
+    subType: classifySubtype(a.category, a.amap_type, a.name, ratingVal),
     zoneArea: classifyZoneArea(a.address, geom ? geom.longitude : a.longitude, geom ? geom.latitude : a.latitude),
     outdoor: classifyOutdoor(a.category, a.amap_type),
     raw: a
@@ -445,11 +447,17 @@ function parseCost(costStr) {
   return isNaN(num) ? null : num;
 }
 
-function classifySubtype(category, amapType, name) {
-  const text = (amapType || '') + (name || '');
-  if (category === 'stay') return null; // 住宿单独用 classifyZoneArea 处理
+function classifySubtype(category, amapType, name, rating) {
   const subtypes = SUBTYPE_MAP[category];
   if (!subtypes) return null;
+  // 住宿类用评分函数匹配（高中低档代理指标），其余类别用关键词字符串匹配
+  if (category === 'stay') {
+    for (const sub of subtypes) {
+      if (typeof sub.match === 'function' && sub.match(rating)) return sub.key;
+    }
+    return null;
+  }
+  const text = (amapType || '') + (name || '');
   for (const sub of subtypes) {
     if (Array.isArray(sub.match) && sub.match.some(kw => text.includes(kw))) return sub.key;
   }
@@ -567,12 +575,11 @@ function getDurationConfig() {
 function buildCandidatePool(seed = 0) {
   let pool = state.allFeatures.filter(f => state.selectedPrefs.has(f.category));
 
-  // 通用二级分类过滤：住宿用zoneArea字段，其余类别用subType字段
+  // 通用二级分类过滤：所有类别统一用 subType 字段（住宿存的是评分档位key）
   state.selectedPrefs.forEach(catKey => {
     const subSet = state.selectedSubs[catKey];
     if (!subSet || subSet.size === 0) return;
-    const fieldName = catKey === 'stay' ? 'zoneArea' : 'subType';
-    pool = pool.filter(f => f.category !== catKey || subSet.has(f[fieldName]));
+    pool = pool.filter(f => f.category !== catKey || subSet.has(f.subType));
   });
 
   // 无障碍模式：优先过滤掉评分缺失或地址含"梯/楼"等可能无障碍不友好的点（简化规则示意）
@@ -933,9 +940,6 @@ function drawDayRouteOnMap(day, realRouteInfo) {
     target: stops.map(s => [s.longitude, s.latitude]),
     padding: { top: 60, bottom: 200, left: 40, right: 40 }
   }, { duration: 800 });
-
-  // 流动光点动画：沿路径周期性移动，暗示游览方向（替代静态直线的单薄感）
-  startFlowingDot(paths);
 }
 
 /* ---- 沿路径坐标插值，计算t∈[0,1]位置上的经纬度坐标 ---- */
