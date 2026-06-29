@@ -574,12 +574,6 @@ function haversineKm(a, b) {
   return R * 2 * Math.asin(Math.sqrt(h));
 }
 
-function expectedStopsPerDay(hoursPerDay, isAccessible) {
-  // 经验值：正常模式每站平均40分钟(含步行)，无障碍模式放慢到每站55分钟
-  const perStopMinutes = isAccessible ? 55 : 40;
-  return Math.max(2, Math.round(hoursPerDay * 60 / perStopMinutes));
-}
-
 function getDurationConfig() {
   return DURATION_OPTIONS.find(d => d.key === state.selectedDuration);
 }
@@ -666,6 +660,42 @@ function nearestNeighborOrder(points, startPoint) {
 }
 
 /* ---- 主生成函数：按天拆分 + 住宿锚点逻辑 ---- */
+// 单个点位的预计停留时长（分钟），按类别区分，比"一刀切40分钟"更接近真实情况
+function estimateDwellMinutes(category) {
+  const table = { attraction: 45, heritage: 40, culture: 40, food: 50, stay: 5 };
+  return table[category] ?? 35;
+}
+
+// 步行速度估算：4km/h，用于把haversine距离换算成步行耗时(分钟)
+function walkingMinutes(distKm) {
+  return (distKm / 4) * 60;
+}
+
+// 从候选池里按真实时间预算挑出一天的行程：每加入一站就累加"该站停留时长+从上一站走来的步行时长"，
+// 超出当天小时预算就停止，而不是预先假设一个固定能逛几站的数字
+function pickDayStopsByTimeBudget(dayPool, hoursPerDay, startPoint, isAccessible) {
+  const budgetMinutes = hoursPerDay * 60;
+  const speedFactor = isAccessible ? 0.7 : 1; // 无障碍模式步行更慢，预算打七折更保守
+  // 候选池本身已是评分排序后的结果，这里先取一个相对宽裕的候选范围做地理聚类选择
+  const candidatePoolSize = Math.min(dayPool.length, 25);
+  const wideCandidates = selectGeoClusteredStops(dayPool, candidatePoolSize, startPoint);
+  const ordered = nearestNeighborOrder(wideCandidates, startPoint);
+
+  const picked = [];
+  let usedMinutes = 0;
+  let current = startPoint;
+  for (const stop of ordered) {
+    const travelMin = walkingMinutes(haversineKm(current, stop)) / speedFactor;
+    const dwellMin = estimateDwellMinutes(stop.category);
+    const cost = travelMin + dwellMin;
+    if (usedMinutes + cost > budgetMinutes && picked.length > 0) break; // 至少保留1站，避免空行程
+    usedMinutes += cost;
+    picked.push(stop);
+    current = stop;
+  }
+  return { picked, usedMinutes };
+}
+
 function buildMultiDayItinerary(seed = 0) {
   const durCfg = getDurationConfig();
   const pool = buildCandidatePool(seed);
@@ -673,7 +703,6 @@ function buildMultiDayItinerary(seed = 0) {
   const nonStayPool = pool.filter(f => f.category !== 'stay');
   const stayPool = pool.filter(f => f.category === 'stay');
 
-  const stopsPerDay = expectedStopsPerDay(durCfg.hoursPerDay, state.accessibleMode);
   const needsStay = durCfg.days > 1;
 
   // 如果选了多日但偏好里没勾"住宿"，自动从全量住宿数据里按评分选，保证体验完整
@@ -685,11 +714,11 @@ function buildMultiDayItinerary(seed = 0) {
 
   for (let d = 0; d < durCfg.days; d++) {
     const dayPool = nonStayPool.filter(f => !usedIds.has(f.objectId));
-    // 用地理聚类选点：避免高分点散落各处导致路线绕远路，而是在"评分高"与"空间紧凑"间做权衡
-    const picked = selectGeoClusteredStops(dayPool, stopsPerDay, lastAnchor);
+    // 按真实时间预算(游览时长+步行耗时)挑选当天能塞下的站点，而不是用固定站数假设
+    const { picked } = pickDayStopsByTimeBudget(dayPool, durCfg.hoursPerDay, lastAnchor, state.accessibleMode);
     picked.forEach(p => usedIds.add(p.objectId));
 
-    let ordered = nearestNeighborOrder(picked, lastAnchor);
+    let ordered = picked; // pickDayStopsByTimeBudget内部已按最近邻排好序
 
     let anchor = null;
     // 多日模式下，除最后一天，每天末尾固定一个住宿锚点
@@ -1144,8 +1173,18 @@ function updatePrediction() {
 
   const durCfg = getDurationConfig();
   const pool = buildCandidatePool(0).filter(f => f.category !== 'stay');
-  const perDay = expectedStopsPerDay(durCfg.hoursPerDay, state.accessibleMode);
-  const totalStops = Math.min(perDay * durCfg.days, pool.length);
+
+  // 用真实时间预算模拟一遍多日选点，得到准确的预计站数（而非粗略的固定值估算）
+  let simUsedIds = new Set();
+  let simAnchor = { longitude: CENTER.longitude, latitude: CENTER.latitude };
+  let totalStops = 0;
+  for (let d = 0; d < durCfg.days; d++) {
+    const dayPool = pool.filter(f => !simUsedIds.has(f.objectId));
+    const { picked } = pickDayStopsByTimeBudget(dayPool, durCfg.hoursPerDay, simAnchor, state.accessibleMode);
+    picked.forEach(p => simUsedIds.add(p.objectId));
+    totalStops += picked.length;
+    if (picked.length > 0) simAnchor = picked[picked.length - 1];
+  }
 
   let weatherNote = '';
   if (state.weather) {
