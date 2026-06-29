@@ -339,6 +339,8 @@ require([
 
   // 暴露给后续函数使用
   window.EsriModules = { Graphic, Point, route, RouteParameters, FeatureSet };
+  state.mapReady = true;
+  if (typeof updatePrediction === 'function') updatePrediction();
 
   // ---- 创建地图 ----
   const map = new Map({
@@ -1085,6 +1087,14 @@ function renderItineraryDrawer(activeDayIndex) {
   `;
 
   const cardsEl = document.getElementById('drawerCards');
+  if (activeDay.stops.length === 0) {
+    cardsEl.innerHTML = `<div style="padding:20px;color:var(--ink-soft);font-size:12.5px;">
+      该偏好下符合条件的点位数量有限，本日暂无更多新点位可安排——
+      建议缩短游玩天数，或在左侧勾选更多偏好类别以获得更丰富的行程。
+    </div>`;
+    document.getElementById('drawer').classList.add('show');
+    return;
+  }
   cardsEl.innerHTML = activeDay.stops.map((s, i) => {
     const isAnchor = activeDay.anchor && s.objectId === activeDay.anchor.objectId;
     const priceText = s.cost ? `¥${s.cost}` : '';
@@ -1126,6 +1136,11 @@ function updatePrediction() {
   }
   if (!state.allFeatures.length) {
     predictLine.innerHTML = '数据加载中…';
+    genBtn.disabled = true;
+    return;
+  }
+  if (!state.mapReady) {
+    predictLine.innerHTML = '地图初始化中，请稍候…';
     genBtn.disabled = true;
     return;
   }
