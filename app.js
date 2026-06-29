@@ -5,6 +5,8 @@
    ==================================================================== */
 
 // ===== 全局配置 =====
+// 主图层：691条真实POI（景点/非遗体验/文化场馆/美食/住宿/公共服务，
+// 其中10条非遗体验数据已合并进同一个图层，category字段值为 'heritage'）
 const FEATURE_LAYER_URL = "https://services8.arcgis.com/HOpNJOCGcy3Gi8RS/arcgis/rest/services/%E4%B9%8C%E9%95%87/FeatureServer/0";
 
 // ArcGIS Routing 服务所需的 API Key（需在 ArcGIS Developer 控制台生成，
@@ -14,9 +16,11 @@ const ARCGIS_ROUTING_API_KEY = "在这里填入你的API Key";
 // 乌镇景区中心坐标（西栅入口，石佛南路18号）
 const CENTER = { longitude: 120.488115, latitude: 30.753251 };
 
+// 6大一级分类：原"非遗/文化"已拆分为 heritage(真非遗,10条) 和 culture(文化场馆,72条)
 const CATS = {
   attraction: { label: '景点',     color: '#2D4F5C', icon: '◆' },
-  heritage:   { label: '非遗/文化', color: '#B8693D', icon: '◆' },
+  heritage:   { label: '非遗体验', color: '#B8693D', icon: '◆' },
+  culture:    { label: '文化场馆', color: '#6B5B7A', icon: '◆' },
   food:       { label: '美食',     color: '#C9914A', icon: '◆' },
   stay:       { label: '住宿',     color: '#5C7A5C', icon: '◆' },
   service:    { label: '公共服务', color: '#8A8478', icon: '◆' }
@@ -31,10 +35,19 @@ const ATTRACTION_SUBTYPES = [
   { key: 'general',  label: '综合景点',  match: ['旅游景点'] }
 ];
 
-const HERITAGE_SUBTYPES = [
+const CULTURE_SUBTYPES = [
   { key: 'exhibit',  label: '展览会展', match: ['会展中心', '展览馆', '美术馆'] },
   { key: 'edu',      label: '科教文化', match: ['科教文化场所', '图书馆', '科技馆'] },
   { key: 'art',      label: '艺术团体', match: ['文艺团体', '室内设施'] }
+];
+
+// 非遗体验子类：amap_type字段对这10个真实点位的判断力有限(风景名胜/剧场/展览馆/专卖店混杂)，
+// 改用名称里的真实技艺关键词分类，依据是已核实的具体非遗项目名称
+const HERITAGE_SUBTYPES = [
+  { key: 'dye',      label: '染坊印染', match: ['染坊', '蓝印花布'] },
+  { key: 'show',     label: '戏曲表演', match: ['皮影', '戏馆', '剧场'] },
+  { key: 'craft',    label: '手工技艺', match: ['竹编', '竹芸', '手工'] },
+  { key: 'other',    label: '民俗体验', match: ['三寸金莲', '体验馆', '作坊区'] }
 ];
 
 // 美食子类匹配规则（基于真实数据 amap_type 字段统计得出的高频类型）
@@ -66,6 +79,7 @@ const SERVICE_SUBTYPES = [
 const SUBTYPE_MAP = {
   attraction: ATTRACTION_SUBTYPES,
   heritage: HERITAGE_SUBTYPES,
+  culture: CULTURE_SUBTYPES,
   food: FOOD_SUBTYPES,
   stay: STAY_SUBTYPES,
   service: SERVICE_SUBTYPES
