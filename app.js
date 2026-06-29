@@ -22,8 +22,7 @@ const CATS = {
   heritage:   { label: '非遗体验', color: '#B8693D', icon: '◆' },
   culture:    { label: '文化场馆', color: '#6B5B7A', icon: '◆' },
   food:       { label: '美食',     color: '#C9914A', icon: '◆' },
-  stay:       { label: '住宿',     color: '#5C7A5C', icon: '◆' },
-  service:    { label: '公共服务', color: '#8A8478', icon: '◆' }
+  stay:       { label: '住宿',     color: '#5C7A5C', icon: '◆' }
 };
 
 // 各类别二级分类匹配规则（均基于真实数据 amap_type 字段统计的高频类型，非凭空猜测）
