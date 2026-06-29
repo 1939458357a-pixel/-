@@ -1,7 +1,7 @@
 /* ====================================================================
    乌镇文旅资源 WebGIS 智能导览系统
    技术栈：ArcGIS API for JavaScript 4.29
-   数据源：ArcGIS Online FeatureLayer（681条真实POI，高德地图开放平台采集）
+   数据源：ArcGIS Online FeatureLayer（687条真实POI，高德地图开放平台采集）
    ==================================================================== */
 
 // ===== 全局配置 =====
@@ -131,7 +131,7 @@ function buildPanel() {
 
     <div class="stats-row">
       <div class="stat"><div class="stat-num" data-count="0" id="statTotal">0</div><div class="stat-label">真实资源点位</div></div>
-      <div class="stat"><div class="stat-num" data-count="5">0</div><div class="stat-label">资源类别</div></div>
+      <div class="stat"><div class="stat-num" data-count="${Object.keys(CATS).length}">0</div><div class="stat-label">资源类别</div></div>
       <div class="stat"><div class="stat-num" data-count="0" id="statStay">0</div><div class="stat-label">可选住宿</div></div>
     </div>
 
@@ -179,7 +179,7 @@ function buildPanel() {
     </div>
 
     <div class="footer-note">
-      数据来源：高德地图开放平台POI批量采集 + 人工清洗（681条真实点位）<br>
+      数据来源：高德地图开放平台POI批量采集 + 人工清洗（共 ${state.allFeatures.length || 687} 条真实点位，含10条经实地核实的非遗实体点位）<br>
       技术实现：ArcGIS API for JavaScript · ArcGIS Online FeatureLayer · esri/rest/route 真实路网规划<br>
       天气数据：Open-Meteo 开源气象API（实时）<br>
       本系统为课程作业演示原型
@@ -810,9 +810,6 @@ function generateItinerary(isReroll) {
 
   const { days, durCfg } = buildMultiDayItinerary(state.rerollSeed);
   state.currentItinerary = { days, durCfg, realDistances: {} };
-
-  document.getElementById('emptyHint').style.opacity = '0';
-  document.getElementById('emptyHint').style.pointerEvents = 'none';
 
   // 高亮地图上的相关点位
   highlightRouteOnMap(days[0].stops);
