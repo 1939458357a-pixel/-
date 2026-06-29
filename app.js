@@ -98,9 +98,7 @@ const state = {
   allFeatures: [],          // 从FeatureLayer加载的全部点位（已清洗为JS对象数组）
   activeLayers: new Set(Object.keys(CATS)),
   selectedPrefs: new Set(),
-  selectedSubs: {           // 每个类别对应一个二级分类的选中集合，通用机制
-    attraction: new Set(), heritage: new Set(), food: new Set(), stay: new Set(), service: new Set()
-  },
+  selectedSubs: Object.fromEntries(Object.keys(CATS).map(k => [k, new Set()])), // 自动适配CATS的所有类别，避免新增类别时遗漏初始化
   selectedDuration: 'half',
   accessibleMode: false,
   currentItinerary: null,   // { days: [ { dayIndex, stops:[...], anchor or null } ], totalBudget, ... }
