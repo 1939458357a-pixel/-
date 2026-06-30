@@ -392,7 +392,7 @@ require([
       where: "1=1",
       outFields: ["*"],
       returnGeometry: true,
-      num: 1000
+      num: 2000
     }).then((result) => {
       state.allFeatures = result.features.map(f => normalizeFeature(f));
       onDataLoaded();
@@ -456,6 +456,7 @@ function normalizeFeature(feature) {
     subType: classifySubtype(a.category, a.amap_type, a.name, ratingVal),
     zoneArea: classifyZoneArea(a.address, geom ? geom.longitude : a.longitude, geom ? geom.latitude : a.latitude),
     outdoor: classifyOutdoor(a.category, a.amap_type),
+    open_hours: a.open_hours || '',
     raw: a
   };
 }
