@@ -290,12 +290,11 @@ body{
 
 /* ===== 单站换一个按钮 ===== */
 .stop-swap-btn{
-  position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;
-  background:rgba(184,105,61,0.12);border:none;cursor:pointer;font-size:11px;color:var(--terracotta);
-  display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.2s,background 0.2s;
+  position:absolute;top:8px;right:8px;width:26px;height:26px;border-radius:50%;
+  background:rgba(184,105,61,0.1);border:1px solid rgba(184,105,61,0.25);cursor:pointer;font-size:12px;color:var(--terracotta);
+  display:flex;align-items:center;justify-content:center;opacity:1;transition:all 0.2s;
 }
-.stop-card:hover .stop-swap-btn{opacity:1;}
-.stop-swap-btn:hover{background:var(--terracotta);color:white;}
+.stop-swap-btn:hover{background:var(--terracotta);color:white;border-color:var(--terracotta);transform:scale(1.1);}
 
 /* ===== 讲解模式工具栏 ===== */
 .narrate-bar{
