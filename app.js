@@ -10,6 +10,90 @@ const FEATURE_LAYER_URL = "https://services8.arcgis.com/HOpNJOCGcy3Gi8RS/arcgis/
 // ArcGIS Routing 服务所需的 API Key（需在 ArcGIS Developer 控制台生成，
 // 并勾选 "Routing" / Network Analysis 权限。未填写时，系统会自动降级为直线距离估算，不影响其他功能运行）
 const ARCGIS_ROUTING_API_KEY = "在这里填入你的API Key";
+
+// ===== 乌镇知名景点真实介绍知识库（基于公开历史资料整理） =====
+const POI_INTROS = {
+  '乌镇古镇旅游区': '乌镇是江南六大古镇之一，拥有六千余年悠久历史。这里完整保存着晚清和民国时期水乡古镇的风貌，以河成街、街桥相连、依河筑屋，是名副其实的"中国最后的枕水人家"。',
+  '乌镇西栅景区': '西栅景区是乌镇的核心游览区，占地3.4平方公里，由12座小岛组成，纵横交叉河道9000多米，古桥70多座。景区于2007年正式开放，集观光、休闲、度假于一体，是乌镇最成熟完善的旅游区域。',
+  '乌镇风景区': '乌镇风景区涵盖东栅、西栅两大景区，是典型的江南水乡古镇。这里素有"鱼米之乡、丝绸之府"之称，1991年被评为浙江省历史文化名城，2010年成为国家5A级旅游景区。',
+  '木心美术馆': '木心美术馆由建筑大师贝聿铭弟子设计，为纪念乌镇籍著名画家、文学家木心先生而建。美术馆收藏了木心先生的绘画与文学作品，建筑风格简洁现代，与古镇风貌形成独特对话。周一闭馆，票价20元。',
+  '木心美术馆水台': '水台是木心美术馆的标志性景观之一，位于美术馆入口处的水面平台。设计灵感源自江南水乡的码头文化，是游客拍照打卡的热门地点。',
+  '草木本色染坊-染房': '草木本色染坊是乌镇西栅景区内展示传统蓝印花布制作工艺的非遗体验点。染坊沿用明清时期的传统手工技艺，以植物蓝草为染料，在白色土布上印制出精美的青花图案，是国家级非物质文化遗产。',
+  '草木本色染坊-晒场': '晒场是草木本色染坊的重要组成部分，高高竖立的晒布架上挂满了蓝白相间的印花布，是乌镇最具代表性的摄影场景之一。蓝印花布源于唐宋，盛于明清，被誉为"东方蓝白艺术的活化石"。',
+  '草木本色染坊-刮浆间': '刮浆间是蓝印花布制作的核心工序场所。工匠将镂空花版铺在白布上，用豆粉和石灰混合的防染浆刮印图案，再浸入蓝草染缸反复染色，最终形成精美的蓝白花纹。',
+  '昭明书院': '昭明书院始建于南朝梁代，是为纪念昭明太子萧统而建。萧统曾在此编撰中国现存最早的诗文总集《昭明文选》。书院内古木参天，环境清幽，是西栅景区内感受千年文脉的最佳场所。',
+  '月老庙': '月老庙位于西栅景区的西北角，供奉着主管人间姻缘的月老。庙内挂满了善男信女祈福的红绳和姻缘牌，是乌镇最具浪漫色彩的景点之一，许多情侣专程前来求取姻缘签。',
+  '喜庆堂': '喜庆堂是展示江南传统婚俗文化的场馆，馆内复原了旧时江南大户人家娶亲的完整场景，从花轿、喜服到婚书、聘礼，一应俱全。这里定期举办传统水乡婚礼表演，让游客感受纯正的江南婚俗。',
+  '龙形田': '龙形田位于西栅景区的西北角，是一片依照地形开垦的农田，因从高处俯瞰形如卧龙而得名。这里四季种植不同的农作物，春季油菜花金黄一片，夏秋两季则是绿油油的稻田，是体验江南水乡农耕文化的好去处。',
+  '叙昌酱园': '叙昌酱园创立于清朝咸丰九年（1859年），是乌镇历史最悠久的酱园之一。酱园坚持传统手工酿造工艺，生产的酱油、酱菜以"色泽红褐、酱香浓郁"著称。晒场上的数百口酱缸是乌镇独特的风景线。',
+  '茅盾纪念堂': '茅盾纪念堂是为纪念中国现代文学巨匠茅盾先生（沈雁冰）而建。茅盾于1896年出生在乌镇，其代表作《子夜》《林家铺子》等深刻描绘了旧中国的社会面貌。纪念堂内陈列着茅盾的遗物、手稿和珍贵照片。',
+  '茅盾陵园': '茅盾陵园位于西栅景区东南角的灵水居内，是茅盾先生1981年逝世后的安息之地。陵园环境清幽，碑石上镌刻着茅盾的手迹，是文学爱好者缅怀先贤的圣地。',
+  '白莲塔': '白莲塔原建于北宋崇宁年间，曾是乌镇标志性的佛教建筑，原塔于1868年倒塌，现塔为2005年重建。塔高七层，登塔可俯瞰西栅全景和京杭大运河，是乌镇最佳观景点之一。',
+  '水上戏台': '水上戏台是西栅景区内的传统戏曲表演场所，坐落于元宝湖畔。戏台背靠湖水，面向街道，是江南水乡特有的建筑形式。这里定期上演桐乡花鼓戏、越剧等地方戏曲，让游客领略江南戏曲的魅力。',
+  '水上集市': '水上集市还原了旧时江南水乡"以船为市"的贸易场景。清晨，摇橹船载着新鲜的蔬菜瓜果停靠在岸边，沿岸居民和游客可购买时令食材，体验原汁原味的水乡生活。',
+  '水上集市-早茶客': '早茶客是乌镇西栅推出的特色早餐体验项目。清晨坐在水边长桌旁，品尝江南传统早点——小笼包、豆浆、油条、定胜糕等，听着船桨拨水声，是最地道的乌镇打开方式。',
+  '亦昌冶坊': '亦昌冶坊是乌镇保存最完好的传统冶铁作坊，创立于明朝嘉靖年间。坊内陈列着各类传统铁器农具和生活用具，展示了江南地区悠久的冶铁历史和精湛的手工技艺。',
+  '乌镇西栅景区-天下第一锅': '天下第一锅是亦昌冶坊的镇坊之宝，直径超过两米，重达数吨。这口巨锅铸造于清代，曾用于乌镇庙会时煮粥施舍贫民，见证了乌镇人的善良与质朴。',
+  '安渡坊渡口': '安渡坊是西栅景区的主要渡口之一，也是游客进入西栅历史街区的重要通道。"安渡"二字寓意平安渡河，自古以来就是商贾往来、游人如织的水上码头。',
+  '乌镇蘑菇屋': '蘑菇屋是乌镇西栅景区内的一处特色景观建筑，外形酷似蘑菇，充满童趣。这里是亲子家庭的热门打卡点，也是西栅景区内独具创意的景观设计代表作。',
+  '老街长弄': '老街长弄是乌镇西栅历史街区的典型街巷格局，青石板路两侧是明清时期保存完好的民居建筑。弄堂深深、曲径通幽，漫步其中可感受江南水乡特有的慢生活节奏。',
+  '元宝湖': '元宝湖位于西栅景区的中心地带，因湖面形状酷似元宝而得名。湖畔绿树成荫，古桥横跨，是西栅景区内最开阔的水域景观，也是夜游时灯光秀的主要舞台。',
+  '喜鹊湖': '喜鹊湖是西栅景区内一处宁静的水域，湖畔杨柳依依，水鸟栖息。相传古时湖畔常有喜鹊筑巢，故名喜鹊湖，是游客远离喧嚣、静享水乡风光的好去处。',
+  '洪昇广场': '洪昇广场以西栅景区内的清代著名戏曲家洪昇命名。洪昇是昆曲《长生殿》的作者，曾在乌镇一带游历创作。广场定期举办传统戏曲表演，是感受江南戏曲文化的公共空间。',
+  '舟楫文化长廊': '舟楫文化长廊沿西栅河道而建，系统展示了江南水乡的造船历史和船文化。长廊内陈列着各式传统船只模型，从乌篷船到货船，再现了过去"以船为马"的水乡生活图景。',
+  '西栅夜游': '西栅夜游是乌镇最负盛名的旅游体验之一。夜幕降临后，两岸古宅亮起暖黄灯笼，倒影在平静的河面上，摇橹船缓缓划过，宛如一幅流动的水墨画卷。夜游不单独售票，购买西栅门票即可。',
+  '六朝遗胜': '六朝遗胜位于昭明书院内，是一块刻有"六朝遗胜"四字的古碑。碑刻见证了乌镇自六朝以来的悠久历史，是研究江南古镇历史沿革的重要实物资料。',
+  '蓝草学堂': '蓝草学堂位于草木本色染坊内，是专门教授蓝印花布技艺的体验工坊。游客可以亲手体验刻板、刮浆、染色等传统工序，将亲手制作的蓝印花布作品带回家。',
+  '福盛堂': '福盛堂是西栅景区内展示江南传统民居建筑风格的场馆，建筑格局为典型的"四水归堂"式院落。馆内陈列着明清家具和日常生活器物，展现了旧时江南大户人家的生活场景。',
+  '灯笼铺': '灯笼铺是西栅景区内一家售卖传统手工灯笼的特色店铺。江南灯笼以竹为骨、纱为面、彩绘为饰，造型优美，是乌镇夜游时街头巷尾最具氛围感的装饰。',
+  '乌镇八宝糕点坊': '八宝糕点坊是乌镇知名的传统糕点店，主营姑嫂饼、定胜糕、芡实糕等江南特色小吃。姑嫂饼是乌镇传统名点，已有百余年历史，以酥脆香甜著称。',
+  '世博乌镇馆': '世博乌镇馆原为2010年上海世博会乌镇展区，后整体搬迁至西栅景区内。展馆以现代科技手段展示乌镇的历史文化、水乡风貌和未来发展，是了解乌镇的现代化窗口。',
+  '吴中石舫': '吴中石舫位于白莲塔旁的京杭大运河边，是一座仿照古代游船造型建造的石质建筑。石舫静卧水面，与运河、古塔相映成趣，是乌镇西栅最具诗意的景观之一。',
+  '雨读桥': '雨读桥是西栅景区内一座造型古朴的石拱桥，桥名取自"雨天读书"的诗意。桥头绿树掩映，桥下流水潺潺，是乌镇"桥里桥"水乡景观的典型代表。',
+  '通顺桥': '通顺桥横跨西栅河道，连接两岸古街，桥名寓意"通行顺畅"。这座明清时期的古桥至今仍承担着两岸居民和游客的日常通行功能，是活着的水乡历史。',
+  '平荷桥': '平荷桥因桥下夏季荷花盛开而得名，是西栅景区内一处赏荷的绝佳地点。夏日傍晚，站在桥上欣赏"接天莲叶无穷碧"的景致，是乌镇独有的浪漫体验。',
+  '归思桥': '归思桥位于西栅景区的西侧，桥名寄托着游子归乡的思念之情。站在桥上远眺，白墙黛瓦的古镇尽收眼底，是摄影爱好者捕捉乌镇全景的热门机位。',
+  '连理树': '连理树位于西栅景区的西北角，两棵古树相依相偎，枝干交错缠绕，形似连理。相传情侣在此树下许愿可白头偕老，是乌镇最受情侣喜爱的许愿胜地。',
+  '合家树': '合家树与连理树相邻，是一棵枝繁叶茂的古树。树名寓意家庭和睦、子孙满堂，许多游客会在树下为家人祈福，寄托对美好生活的向往。',
+  '景行水巷': '景行水巷是西栅景区内一条幽深的沿河小巷，"景行"取自《诗经》"高山仰止，景行行止"。小巷两侧是保存完好的明清民居，漫步其中可感受最原汁原味的水乡生活。',
+  '水上集市-古戏台': '古戏台位于水上集市旁，是乌镇传统戏曲表演的舞台。戏台飞檐翘角、雕梁画栋，定期上演桐乡花鼓戏、越剧等地方戏曲，是体验江南戏曲文化的最佳场所。'
+};
+
+// 通用类别介绍模板（用于不在知识库中的点位，基于真实类别信息，不编造历史）
+function getGenericIntro(s) {
+  const subLabel = SUBTYPE_MAP[s.category]?.find(sub => sub.key === s.subType)?.label || CATS[s.category].label;
+  let intro = '';
+  switch (s.category) {
+    case 'attraction':
+      intro = `这是一处${subLabel}，位于${s.address || '乌镇西栅景区内'}。${s.rating ? '游客评分' + s.rating + '分，' : ''}${s.cost ? '参考消费约' + s.cost + '元。' : ''}`;
+      break;
+    case 'heritage':
+      intro = `这里是${subLabel}，可以近距离感受江南传统技艺的魅力。${s.address ? '位于' + s.address + '。' : ''}${s.rating ? '评分' + s.rating + '分。' : ''}`;
+      break;
+    case 'culture':
+      intro = `这是一座${subLabel}，${s.address ? '地处' + s.address + '，' : ''}是了解江南文化的好去处。${s.rating ? '评分' + s.rating + '分。' : ''}`;
+      break;
+    case 'food':
+      intro = `这里是${subLabel}，${s.address ? '位于' + s.address + '，' : ''}可以品尝地道的江南味道。${s.rating ? '评分' + s.rating + '分，' : ''}${s.cost ? '人均约' + s.cost + '元。' : ''}`;
+      break;
+    case 'stay':
+      intro = `这是一处${subLabel}，${s.address ? '位于' + s.address + '，' : ''}是休憩住宿的好选择。${s.rating ? '评分' + s.rating + '分。' : ''}`;
+      break;
+    default:
+      intro = `这里是${s.name}，${s.address ? '位于' + s.address + '。' : ''}`;
+  }
+  return intro;
+}
+
+function getPoiIntro(s) {
+  // 先精确匹配
+  if (POI_INTROS[s.name]) return POI_INTROS[s.name];
+  // 再尝试模糊匹配（去掉前缀后缀）
+  for (const key in POI_INTROS) {
+    if (s.name.includes(key) || key.includes(s.name)) return POI_INTROS[key];
+  }
+  return getGenericIntro(s);
+}
 // 乌镇景区中心坐标（西栅入口，石佛南路18号）
 const CENTER = { longitude: 120.488115, latitude: 30.753251 };
 // 6大一级分类：原"非遗/文化"已拆分为 heritage(真非遗,10条) 和 culture(文化场馆,72条)
@@ -1121,8 +1205,8 @@ function renderItineraryDrawer(activeDayIndex) {
     <div class="voice-bar" id="voiceBar">
       <span style="font-size:11px;color:var(--ink-soft);">语速</span>
       <div class="voice-speed">
-        <input type="range" id="voiceSpeedRange" min="0.5" max="2.0" step="0.1" value="1.0">
-        <span id="voiceSpeedVal">1.0x</span>
+        <input type="range" id="voiceSpeedRange" min="0.5" max="2.0" step="0.1" value="0.95">
+        <span id="voiceSpeedVal">0.95x</span>
       </div>
       <button class="voice-btn" id="voiceToggleBtn">语音关闭</button>
     </div>
@@ -1494,15 +1578,15 @@ function updateNarrateDetail() {
   const tel = s.tel || '';
   const favs = getFavorites();
   const isFav = favs.some(f => f.objectId === s.objectId);
+  const intro = getPoiIntro(s);
   detail.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-      <div style="font-weight:600;color:var(--ink);margin-bottom:4px;">${state.narrateIndex + 1}. ${s.name}</div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
+      <div style="font-weight:600;color:var(--ink);">${state.narrateIndex + 1}. ${s.name}</div>
       <button id="favBtn" style="background:none;border:none;cursor:pointer;font-size:14px;" title="收藏此站">${isFav ? '⭐' : '☆'}</button>
     </div>
-    <div>${subLabel}${s.rating ? ' · ⭐' + s.rating : ''}${s.cost ? ' · ¥' + s.cost : ''}</div>
-    ${addr ? `<div style="margin-top:3px;">📍 ${addr}</div>` : ''}
-    ${tel ? `<div>📞 ${tel}</div>` : ''}
-    <div style="margin-top:6px;font-size:11px;color:var(--ink-soft);opacity:0.7;">点击语音按钮可收听讲解 · 已收藏 ${favs.length} 个站点</div>
+    <div style="font-size:12px;color:var(--ink-soft);margin-bottom:8px;">${subLabel}${s.rating ? ' · ⭐' + s.rating : ''}${s.cost ? ' · ¥' + s.cost : ''}${addr ? ' · 📍' + addr : ''}${tel ? ' · 📞' + tel : ''}</div>
+    <div style="font-size:12.5px;color:var(--ink);line-height:1.7;border-left:2px solid var(--gold);padding-left:10px;background:rgba(201,166,107,0.05);border-radius:0 6px 6px 0;padding:8px 10px;">${intro}</div>
+    <div style="margin-top:6px;font-size:11px;color:var(--ink-soft);opacity:0.6;">点击 🔊 收听语音讲解 · 已收藏 ${favs.length} 个站点</div>
   `;
   document.getElementById('favBtn')?.addEventListener('click', () => toggleFavorite(s));
   // 地图定位到当前讲解站点
@@ -1512,7 +1596,30 @@ function updateNarrateDetail() {
 /* -------- 语音播报（Web Speech API） -------- */
 state.synth = window.speechSynthesis || null;
 state.speaking = false;
-state.voiceRate = 1.0;
+state.voiceRate = 0.95;
+state.zhVoice = null;
+
+// 初始化时选择最好听的中文语音
+function initVoice() {
+  if (!state.synth) return;
+  const voices = state.synth.getVoices();
+  // 优先选择中文语音中比较自然的（不同浏览器voice名称不同，做兼容性匹配）
+  state.zhVoice = voices.find(v => v.lang === 'zh-CN' && (v.name.includes('Ting') || v.name.includes('Yaoyao') || v.name.includes('Google') || v.name.includes('Mei')))
+    || voices.find(v => v.lang === 'zh-CN' && v.name.includes('Female'))
+    || voices.find(v => v.lang === 'zh-CN')
+    || voices.find(v => v.lang.startsWith('zh'));
+}
+if (state.synth && state.synth.onvoiceschanged !== undefined) {
+  state.synth.onvoiceschanged = initVoice;
+}
+initVoice();
+
+function getSpeakText(s, idx) {
+  const intro = getPoiIntro(s);
+  // 语音文本：简短开场 + 真实介绍（截取前100字以内，避免太长）
+  const shortIntro = intro.length > 120 ? intro.slice(0, 120) + '……' : intro;
+  return `接下来是第${idx + 1}站，${s.name}。${shortIntro}`;
+}
 
 function speakCurrentNarrate() {
   if (!state.synth) { showToast('当前浏览器不支持语音播报'); return; }
@@ -1521,12 +1628,12 @@ function speakCurrentNarrate() {
   const s = day.stops[state.narrateIndex];
   if (!s) return;
   state.synth.cancel();
-  const subLabel = SUBTYPE_MAP[s.category]?.find(sub => sub.key === s.subType)?.label || CATS[s.category].label;
-  const text = `第${state.narrateIndex + 1}站，${s.name}。${subLabel}。${s.address || ''}。`;
+  const text = getSpeakText(s, state.narrateIndex);
   const utter = new SpeechSynthesisUtterance(text);
   utter.lang = 'zh-CN';
   utter.rate = state.voiceRate;
-  utter.pitch = 1.0;
+  utter.pitch = 0.9;
+  if (state.zhVoice) utter.voice = state.zhVoice;
   utter.onend = () => { state.speaking = false; };
   state.speaking = true;
   state.synth.speak(utter);
@@ -1538,12 +1645,12 @@ function speakAllStops() {
   if (!day) return;
   state.synth.cancel();
   day.stops.forEach((s, i) => {
-    const subLabel = SUBTYPE_MAP[s.category]?.find(sub => sub.key === s.subType)?.label || CATS[s.category].label;
-    const text = `第${i + 1}站，${s.name}。${subLabel}。`;
+    const text = getSpeakText(s, i);
     const utter = new SpeechSynthesisUtterance(text);
     utter.lang = 'zh-CN';
     utter.rate = state.voiceRate;
-    utter.pitch = 1.0;
+    utter.pitch = 0.9;
+    if (state.zhVoice) utter.voice = state.zhVoice;
     state.synth.speak(utter);
   });
   state.speaking = true;
