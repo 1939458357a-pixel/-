@@ -6,7 +6,7 @@
 // ===== 全局配置 =====
 // 主图层：691条真实POI（景点/非遗体验/文化场馆/美食/住宿/公共服务，
 // 其中10条非遗体验数据已合并进同一个图层，category字段值为 'heritage'）
-const FEATURE_LAYER_URL = "https://services8.arcgis.com/HOpNJOCGcy3Gi8RS/arcgis/rest/services/%E4%B9%8C%E9%95%87/FeatureServer/0";
+const FEATURE_LAYER_URL = "https://services8.arcgis.com/HOpNJOCGcy3Gi8RS/arcgis/rest/services/%E4%B9%8C%E9%95%87%E6%96%87%E6%97%85%E8%B5%84%E6%BA%90_%E6%99%BA%E8%83%BD%E5%AF%BC%E8%A7%88%E7%B3%BB%E7%BB%9F/FeatureServer/0";
 // ArcGIS Routing 服务所需的 API Key（需在 ArcGIS Developer 控制台生成，
 // 并勾选 "Routing" / Network Analysis 权限。未填写时，系统会自动降级为直线距离估算，不影响其他功能运行）
 const ARCGIS_ROUTING_API_KEY = "在这里填入你的API Key";
@@ -86,12 +86,14 @@ function getGenericIntro(s) {
 }
 
 function getPoiIntro(s) {
-  // 先精确匹配
+  // 优先级1：从数据层读取的 description（ArcGIS / CSV）
+  if (s.description && s.description.trim()) return s.description.trim();
+  // 优先级2：内置知识库
   if (POI_INTROS[s.name]) return POI_INTROS[s.name];
-  // 再尝试模糊匹配（去掉前缀后缀）
   for (const key in POI_INTROS) {
     if (s.name.includes(key) || key.includes(s.name)) return POI_INTROS[key];
   }
+  // 优先级3：通用描述
   return getGenericIntro(s);
 }
 // 乌镇景区中心坐标（西栅入口，石佛南路18号）
@@ -541,6 +543,7 @@ function normalizeFeature(feature) {
     zoneArea: classifyZoneArea(a.address, geom ? geom.longitude : a.longitude, geom ? geom.latitude : a.latitude),
     outdoor: classifyOutdoor(a.category, a.amap_type),
     open_hours: a.open_hours || '',
+    description: a.description || '',
     raw: a
   };
 }
@@ -1203,10 +1206,18 @@ function renderItineraryDrawer(activeDayIndex) {
   // 语音控制条
   const voiceBarHtml = `
     <div class="voice-bar" id="voiceBar">
+      <span style="font-size:11px;color:var(--ink-soft);">声音</span>
+      <select id="voiceSelect" style="font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--line);background:var(--white);color:var(--ink-soft);max-width:110px;">
+        <option value="zh-CN-XiaoxiaoNeural">晓晓（女声）</option>
+        <option value="zh-CN-YunyangNeural">云扬（男声）</option>
+        <option value="zh-CN-YunxiNeural">云希（男声）</option>
+        <option value="zh-CN-XiaoyiNeural">晓伊（女声）</option>
+      </select>
+      <div class="narrate-sep"></div>
       <span style="font-size:11px;color:var(--ink-soft);">语速</span>
       <div class="voice-speed">
-        <input type="range" id="voiceSpeedRange" min="0.5" max="2.0" step="0.1" value="0.95">
-        <span id="voiceSpeedVal">0.95x</span>
+        <input type="range" id="voiceSpeedRange" min="0.5" max="1.5" step="0.1" value="1.0">
+        <span id="voiceSpeedVal">1.0x</span>
       </div>
       <button class="voice-btn" id="voiceToggleBtn">语音关闭</button>
     </div>
@@ -1289,13 +1300,22 @@ function renderItineraryDrawer(activeDayIndex) {
     `;
   });
 
-  // 语速调节
+  // 语速调节（Edge TTS 格式：+0%, +20%, -10% 等）
   const speedRange = document.getElementById('voiceSpeedRange');
   const speedVal = document.getElementById('voiceSpeedVal');
   if (speedRange) {
     speedRange.addEventListener('input', (e) => {
-      state.voiceRate = parseFloat(e.target.value);
-      speedVal.textContent = state.voiceRate.toFixed(1) + 'x';
+      const val = parseFloat(e.target.value);
+      state.edgeRate = (val >= 1 ? '+' : '') + Math.round((val - 1) * 100) + '%';
+      speedVal.textContent = val.toFixed(1) + 'x';
+    });
+  }
+
+  // 语音选择
+  const voiceSelect = document.getElementById('voiceSelect');
+  if (voiceSelect) {
+    voiceSelect.addEventListener('change', (e) => {
+      state.edgeVoice = e.target.value;
     });
   }
 
@@ -1593,26 +1613,9 @@ function updateNarrateDetail() {
   state.view.goTo({ center: [s.longitude, s.latitude], zoom: 17 }, { duration: 400 });
 }
 
-/* -------- 语音播报（Web Speech API） -------- */
-state.synth = window.speechSynthesis || null;
-state.speaking = false;
-state.voiceRate = 0.95;
-state.zhVoice = null;
-
-// 初始化时选择最好听的中文语音
-function initVoice() {
-  if (!state.synth) return;
-  const voices = state.synth.getVoices();
-  // 优先选择中文语音中比较自然的（不同浏览器voice名称不同，做兼容性匹配）
-  state.zhVoice = voices.find(v => v.lang === 'zh-CN' && (v.name.includes('Ting') || v.name.includes('Yaoyao') || v.name.includes('Google') || v.name.includes('Mei')))
-    || voices.find(v => v.lang === 'zh-CN' && v.name.includes('Female'))
-    || voices.find(v => v.lang === 'zh-CN')
-    || voices.find(v => v.lang.startsWith('zh'));
-}
-if (state.synth && state.synth.onvoiceschanged !== undefined) {
-  state.synth.onvoiceschanged = initVoice;
-}
-initVoice();
+/* -------- 语音播报（Edge TTS —— 微软免费高质量语音） -------- */
+state.edgeVoice = 'zh-CN-XiaoxiaoNeural';
+state.edgeRate = '+0%';
 
 function getSpeakText(s, idx) {
   const intro = getPoiIntro(s);
@@ -1621,43 +1624,50 @@ function getSpeakText(s, idx) {
   return `接下来是第${idx + 1}站，${s.name}。${shortIntro}`;
 }
 
-function speakCurrentNarrate() {
-  if (!state.synth) { showToast('当前浏览器不支持语音播报'); return; }
+async function speakCurrentNarrate() {
+  if (!window.edgeTTS) { showToast('语音服务加载中，请稍后'); return; }
   const day = state.currentItinerary?.days[state.activeDayIndex];
   if (!day) return;
   const s = day.stops[state.narrateIndex];
   if (!s) return;
-  state.synth.cancel();
+  edgeStop();
   const text = getSpeakText(s, state.narrateIndex);
-  const utter = new SpeechSynthesisUtterance(text);
-  utter.lang = 'zh-CN';
-  utter.rate = state.voiceRate;
-  utter.pitch = 0.9;
-  if (state.zhVoice) utter.voice = state.zhVoice;
-  utter.onend = () => { state.speaking = false; };
-  state.speaking = true;
-  state.synth.speak(utter);
+  try {
+    showToast('正在生成语音…', 1000);
+    await edgeSpeak(text, { voice: state.edgeVoice, rate: state.edgeRate });
+  } catch (e) {
+    console.error('语音播报失败:', e);
+    showToast('语音生成失败，请检查网络');
+  }
 }
 
-function speakAllStops() {
-  if (!state.synth) { showToast('当前浏览器不支持语音播报'); return; }
+async function speakAllStops() {
+  if (!window.edgeTTS) { showToast('语音服务加载中，请稍后'); return; }
   const day = state.currentItinerary?.days[state.activeDayIndex];
-  if (!day) return;
-  state.synth.cancel();
-  day.stops.forEach((s, i) => {
+  if (!day || !day.stops.length) return;
+  edgeStop();
+  showToast('开始全程语音讲解…');
+  for (let i = 0; i < day.stops.length; i++) {
+    state.narrateIndex = i;
+    updateNarrateDetail();
+    const s = day.stops[i];
     const text = getSpeakText(s, i);
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.lang = 'zh-CN';
-    utter.rate = state.voiceRate;
-    utter.pitch = 0.9;
-    if (state.zhVoice) utter.voice = state.zhVoice;
-    state.synth.speak(utter);
-  });
-  state.speaking = true;
+    try {
+      const audio = await edgeSpeak(text, { voice: state.edgeVoice, rate: state.edgeRate });
+      // 等待当前音频播完
+      await new Promise(resolve => {
+        audio.onended = resolve;
+        audio.onerror = resolve;
+      });
+    } catch (e) {
+      console.error('语音播报失败:', e);
+      break;
+    }
+  }
 }
 
 function stopSpeaking() {
-  if (state.synth) { state.synth.cancel(); state.speaking = false; }
+  edgeStop();
 }
 
 /* -------- 路线冲突检测（基于 open_hours，有数据才检测） -------- */
